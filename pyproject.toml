@@ -1,0 +1,13 @@
+[project]
+name = "massa-watcher"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiodns>=3.4.0",
+    "aiohttp>=3.12.12",
+    "cryptg>=0.5.0.post0",
+    "hachoir>=3.3.0",
+    "telethon>=1.40.0",
+]

@@ -1,0 +1,2 @@
+[api]
+    max_addresses_datastore_keys_query = 1000

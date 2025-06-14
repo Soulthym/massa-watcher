@@ -73,6 +73,17 @@ async def watch(event, address):
     watching[user].append(address)
     await event.reply(f"Started watching address: {address}")
 
+@command(address=address_pat)
+async def unwatch(event, address):
+    # Here you would add the logic to start watching the address
+    user = event.sender_id
+    if user not in watching:
+        return await event.reply(f"You are not watching any addresses.")
+    if address not in watching[user]:
+        return await event.reply(f"You are not watching address: {address}")
+    watching[user].remove(address)
+    await event.reply(f"Stoped watching address: {address}")
+
 async def main():
     print("Connected to Telegram as", TG_USERNAME)
     try:

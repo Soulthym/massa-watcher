@@ -10,10 +10,11 @@ from datetime import timedelta
 import contextlib
 import asyncio
 import time
+import csv
 
 def read_csv(file_path):
     """Read a CSV file and return a list of dictionaries."""
-    import csv
+    print(f"Reading CSV file: {file_path}")
     with file_path.open("r") as f:
         reader = csv.DictReader(f)
         res = {}
@@ -26,7 +27,7 @@ def read_csv(file_path):
 
 def write_csv(file_path, data):
     """Write a list of dictionaries to a CSV file."""
-    import csv
+    print(f"Writing {len(data)} entries to {file_path}")
     with file_path.open("w", newline='') as f:
         writer = csv.DictWriter(f, fieldnames=["user", "address"])
         writer.writeheader()
@@ -121,7 +122,13 @@ async def main():
         async with massa_node(), watch_blocks():
             await bot.send_message(TG_ADMIN, f"Bot started successfully as {TG_USERNAME}.")
             await bot.run_until_disconnected()  # type: ignore
+    except KeyboardInterrupt:
+        print("Bot stopped by user.")
+        await bot.send_message(TG_ADMIN, "Bot stopped by user.")
+        write_csv(watching_file, watching)
     except Exception as e:
+        print(f"Error in main: {e}")
+        await bot.send_message(TG_ADMIN, f"Error in main: {e}")
         write_csv(watching_file, watching)
 
 if __name__ == "__main__":
@@ -132,13 +139,14 @@ if __name__ == "__main__":
             try:
                 bot.loop.run_until_complete(main())
             except KeyboardInterrupt:
+                write_csv(watching_file, watching)
                 print("Bot stopped by user.")
                 break
             except Exception as e:
+                write_csv(watching_file, watching)
                 if datetime.now() - last_exception < timedelta(minutes=5):
                     back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
                 print(f"Error in main loop: {e}")
-                write_csv(watching_file, watching)
                 bot.loop.run_until_complete(bot.send_message(TG_ADMIN, f"Error in main loop: {e}"))
                 print("Restarting bot...")
                 time.sleep(back_off)

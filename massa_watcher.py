@@ -126,4 +126,19 @@ async def main():
 
 if __name__ == "__main__":
     with bot:
-        bot.loop.run_until_complete(main())
+        back_off = 10  # Initial backoff time in seconds
+        last_exception = datetime.now() - timedelta(minutes=5)
+        while True:
+            try:
+                bot.loop.run_until_complete(main())
+            except KeyboardInterrupt:
+                print("Bot stopped by user.")
+                break
+            except Exception as e:
+                if datetime.now() - last_exception < timedelta(minutes=5):
+                    back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
+                print(f"Error in main loop: {e}")
+                write_csv(watching_file, watching)
+                bot.loop.run_until_complete(bot.send_message(TG_ADMIN, f"Error in main loop: {e}"))
+                print("Restarting bot...")
+                time.sleep(back_off)

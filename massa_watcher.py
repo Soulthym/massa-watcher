@@ -112,7 +112,7 @@ async def install_massa_node():
     targz, install = await download_massa_node()
     if install:
         await unpack(targz, data_dir)
-        await configure_massa_node()
+    await configure_massa_node()
 
 class BackgroundProcess:
     def __init__(self, cmd):

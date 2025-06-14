@@ -5,6 +5,12 @@ from env import command
 from env import TG_USERNAME
 from env import TG_ADMIN
 
+from datetime import datetime
+from datetime import timedelta
+import contextlib
+import asyncio
+import time
+
 def read_csv(file_path):
     """Read a CSV file and return a list of dictionaries."""
     import csv
@@ -84,11 +90,35 @@ async def unwatch(event, address):
     watching[user].remove(address)
     await event.reply(f"Stoped watching address: {address}")
 
+async def watch_loop():
+    """Main loop to check for new blocks and notify users."""
+    back_off = 5  # Initial backoff time in seconds
+    while True:
+        try:
+            print("Checking for new blocks...")
+            await asyncio.sleep(1)  # Simulate a delay for checking blocks
+            back_off = 1  # Reset backoff on successful check
+        except asyncio.CancelledError | KeyboardInterrupt:
+            print("Watch loop cancelled.")
+            break
+        except Exception as e:
+            print(f"Error in watch loop: {e}")
+            await bot.send_message(TG_ADMIN, f"Error in watch loop: {e}")
+            await asyncio.sleep(back_off)
+            back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
+
+@contextlib.asynccontextmanager
+async def watch_blocks():
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(watch_loop())
+    print("Started watch_blocks task.")
+    yield
+    task.cancel()
+
 async def main():
     print("Connected to Telegram as", TG_USERNAME)
     try:
-        async with massa_node():
-            print("Massa node is running. Press Ctrl+C to stop.")
+        async with massa_node(), watch_blocks():
             await bot.send_message(TG_ADMIN, f"Bot started successfully as {TG_USERNAME}.")
             await bot.run_until_disconnected()  # type: ignore
     except Exception as e:

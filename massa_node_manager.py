@@ -167,18 +167,18 @@ class BackgroundProcess:
         except Exception as e:
             print(f"[{label}] Exception while reading output: {e}")
             print(f"[{label}] Stream closed.")
-async def shutdown(proc):
-    """Handle shutdown signal."""
-    print("Received shutdown signal. Cleaning up...")
-    await proc.stop()
-    kill_node()
 
 @contextlib.asynccontextmanager
-async def run_bg(cmd):
+async def run_bg_shell(cmd, then=None):
     proc = BackgroundProcess(cmd)
     await proc.start()
     yield
-    await shutdown(proc)
+    await proc.stop()
+    if then:
+        if asyncio.iscoroutinefunction(then):
+            await then(proc)
+        else:
+            then(proc)
 
 @contextlib.asynccontextmanager
 async def massa_node():
@@ -187,7 +187,8 @@ async def massa_node():
     if not massa_node_path.exists():
         raise ValueError(f"Massa node executable not found at {massa_node_path}")
     print(f"Running Massa node from {massa_node_path}")
-    async with run_bg([str(massa_node_path), "-a", "-p", "password"]):
-        print("Massa node is running in the background.")
+    async with run_bg_shell([str(massa_node_path), "-a", "-p", "password"],
+                      then=kill_node):
+        print("Massa node is running. Press Ctrl+C to stop.")
         # Keep the main task running to allow background process to run
         yield

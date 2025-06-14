@@ -1,0 +1,7 @@
+export VIRTUAL_ENV=".venv"
+uv venv
+export TG_API_ID="api_id"
+export TG_API_HASH="api_hash"
+export TG_BOT_TOKEN="bot_token"
+export TG_USERNAME="bot_username"
+export TG_ADMIN="admin"

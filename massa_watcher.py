@@ -1,3 +1,4 @@
+import contextlib
 from pathlib import Path
 from pprint import pp
 import platform
@@ -107,7 +108,6 @@ async def configure_massa_node():
     shutil.copy(dot/"node_config.toml",
                 data_dir/"massa"/"massa-node"/"config"/"config.toml")
 
-
 async def install_massa_node():
     targz, install = await download_massa_node()
     if install:
@@ -144,29 +144,23 @@ class BackgroundProcess:
                 self.process.kill()
                 await self.process.wait()
 
-async def run_massa_node():
-    massa_node_path = data_dir / "massa" / "massa-node" / "massa-node"
-    if not massa_node_path.exists():
-        raise ValueError(f"Massa node executable not found at {massa_node_path}")
-    print(f"Running Massa node from {massa_node_path}")
-    process = BackgroundProcess([str(massa_node_path), "-a", "-p", "password"])
-    await process.start()
-    return process
+    async def read_output(self, label):
+        stream = self.process.stdout
+        try:
+            while True:
+                line = await stream.readline()
+                if line:
+                    print(f"[{label}] {line.decode().rstrip()}")
+                else:
+                    await asyncio.sleep(0.1)  # Avoid busy waiting
+        except Exception as e:
+            print(f"[{label}] Exception while reading output: {e}")
+            print(f"[{label}] Stream closed.")
 
-async def read_output(stream, label):
-    while True:
-        line = await stream.readline()
-        if not line:
-            break
-        print(f"[{label}] {line.decode().rstrip()}")
-    print(f"[{label}] Stream closed.")
-
-async def main():
-    # Replace with the executable you want to run, e.g. ["my_program", "arg1"]
-    # Handle shutdown
-    await install_massa_node()
-    node_proc = await run_massa_node()
-
+@contextlib.asynccontextmanager
+async def run_bg(cmd):
+    proc = BackgroundProcess(cmd)
+    await proc.start()
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
@@ -175,12 +169,26 @@ async def main():
 
     try:
         print("Main task running. Press Ctrl+C to stop.")
-        await read_output(node_proc.process.stdout, "Massa Node Output")
+        await proc.read_output("Massa Node Output")
         await stop_event.wait()
+        yield
     finally:
-        await node_proc.stop()
+        await proc.stop()
         print("Shutdown complete.")
         kill_node()
+
+async def main():
+    # Replace with the executable you want to run, e.g. ["my_program", "arg1"]
+    # Handle shutdown
+    await install_massa_node()
+    massa_node_path = data_dir / "massa" / "massa-node" / "massa-node"
+    if not massa_node_path.exists():
+        raise ValueError(f"Massa node executable not found at {massa_node_path}")
+    print(f"Running Massa node from {massa_node_path}")
+    async with run_bg([str(massa_node_path), "-a", "-p", "password"]):
+        print("Massa node is running in the background.")
+        # Keep the main task running to allow background process to run
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
     try:

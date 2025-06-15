@@ -1,5 +1,6 @@
 # massa-watcher
 A simple monitor for your massa node
+Try it at [@MassaWatcherBot](https://t.me/MassaWatcherBot)
 
 ## Installation
 ### WARNING: Do NOT run this bot on the same machine as your Massa node! It will stop your node!

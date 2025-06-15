@@ -173,7 +173,7 @@ def message_notification(info) -> (str | None):
         return None
     message = [
         f"<b>Address:</b> <code>{address}</code>:",
-        f"<b>Balance:</b> <code>{info.get('final_balance', "0")}</code>MAS, canditate: <code>{info.get('candidate_balance', '0')}</code>MAS",
+        f"<b>Balance:</b> <code>{info.get('final_balance', "0")}</code>MAS, candidate: <code>{info.get('candidate_balance', '0')}</code>MAS",
         f"<b>Rolls:</b> final: <code>{info['final_roll_count'] or 'Unknown'}</code>, candidate: <code>{info.get('candidate_roll_count', '0')}</code>",
     ]
     for cycle in info.get("cycle_infos", []):

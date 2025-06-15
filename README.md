@@ -38,6 +38,8 @@ uv run massa_watcher.py
 If your bot will restart often, instead of clogging official bootstrap servers,
 you can make your own node the default bootstrap node.
 
+During development, this will help a lot with restarting the bot quickly without waiting for the bootstrap servers to respond, which can take several hours if they are overloaded or if you hit your rate limit.
+
 To do this:
 1) find your node id by running `get_status` in your node's client. It will be near the top of the response.
 2) find your node's IP address by running `ip a s` in the terminal on the node's machine (in the shell, not in the massa client)

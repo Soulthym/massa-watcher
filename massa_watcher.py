@@ -65,7 +65,7 @@ async def watch(event, address: str):
     Usage: /watch <address>
     args:
     - address: Your Massa address.
-      pattern: /AU[1-9A-HJ-NP-Za-hj-np-z]+/
+      pattern: AU[1-9A-HJ-NP-Za-hj-np-z]+
     """
     user = event.sender_id
     info = await get_addresses_info((address,))
@@ -90,7 +90,7 @@ async def unwatch(event, address):
     Usage: /unwatch <address>
     args:
     - address: Your Massa address.
-      pattern: /AU[1-9A-HJ-NP-Za-hj-np-z]+/
+      pattern: AU[1-9A-HJ-NP-Za-hj-np-z]+
     """
     user = event.sender_id
     if address not in watching:

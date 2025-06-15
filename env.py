@@ -2,6 +2,7 @@ from telethon import TelegramClient
 from telethon import Button
 from telethon import events
 
+from textwrap import dedent
 from inspect import Signature
 from inspect import signature
 from pathlib import Path
@@ -89,7 +90,7 @@ def command(f = None, /, cmd=None, **arg_specs):
                 if param.default is not param.empty:
                     f_kw[key] = param.default
                     continue
-                return await event.reply(f"Missing argument: {key}\nExpected: {arg_specs[key]}")
+                return await event.reply(f"Missing argument: {key}\n\n{doc(cmd, (sig, arg_specs, f, handler))}")
             if param.annotation is not param.empty:
                 f_kw[key] = param.annotation(f_kw[key])
         bound_args = sig.bind(event, **f_kw)
@@ -100,12 +101,21 @@ def command(f = None, /, cmd=None, **arg_specs):
     return handler
 
 type Func = Callable[..., Any]
-def doc_line(cmd: str, info: tuple[Signature, dict[str, str], Func, Func]) -> str:
+type CmdInfo = tuple[Signature, dict[str, str], Func, Func]
+def build_command_usage(cmd: str, info: CmdInfo) -> str:
     sig, _, f, _ = info
     args = " ".join(name for name in sig.parameters if name not in ("event", "cmd"))
-    docstr = (f.__doc__ or "").strip().partition("\n")[0]
-    print(f"Command {cmd!r} has args: {args!r}, docstr: {docstr!r}")
-    return f"/{cmd} {args}" + (" - " + docstr)
+    if not args:
+        return f"/{cmd}"
+    return f"/{cmd} {args}"
+def doc(cmd: str, info: CmdInfo) -> str:
+    _, _, f, _ = info
+    docstr = dedent(f.__doc__ or "").strip()
+    return build_command_usage(cmd, info) + (" - " + docstr if docstr else "")
+def doc_line(cmd: str, info: CmdInfo) -> str:
+    _, _, f, _ = info
+    docstr = dedent(f.__doc__ or "").strip().partition("\n")[0]
+    return build_command_usage(cmd, info) + (" - " + docstr if docstr else "")
 
 def build_command_list(cmd: str):
     default_commands = [
@@ -125,7 +135,7 @@ def build_default_commands():
         if cmd == "start":
             msg.extend([f"Hello{name}!", "I am your Massa node watcher bot.", ""])
         msg.extend([
-            "Available commands:",
+            "<b>Available commands:</b>",
             "<i><b>Format:</b>",
             "/&lt;command&gt; &lt;args&gt; ... [&lt;optional_args&gt; ...] - description</i>",
             "",

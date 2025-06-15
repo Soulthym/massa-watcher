@@ -49,12 +49,6 @@ def wrap_spaces(**kw):
     endings.reverse()
     return "".join(result) + "".join(endings)
 
-# def wrap_spaces(arg, *args):
-#     if not arg:
-#         return arg
-#     if not args:
-#         return fr"(?:\s+{arg})?"
-#     return fr"(?:\s+{arg}{wrap_spaces(*args)})?"
 def make_pattern(name, **kw):
     pattern = wrap_spaces(**kw)
     return r"(?im)^/(?P<cmd>{name})(?:@{username})?{pattern}".format(
@@ -143,5 +137,8 @@ def build_default_commands():
             "/&lt;command&gt; &lt;args&gt; ... [&lt;optional_args&gt; ...] - description</i>",
             "",
             *build_command_list(cmd),
+            "",
+            f"Made by @{TG_ADMIN}",
+            f"Source: https://github.com/Soulthym/massa-watcher",
         ])
-        await event.reply("\n".join(msg), parse_mode="html")
+        await event.reply("\n".join(msg), parse_mode="html", link_preview=False)

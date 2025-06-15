@@ -9,7 +9,6 @@ from env import TG_ADMIN
 from datetime import datetime
 from datetime import timedelta
 from itertools import batched
-from pprint import pp
 import contextlib
 import asyncio
 import aiohttp
@@ -191,12 +190,10 @@ def message_notification(info) -> (str | None):
 
 async def notify_missed_blocks():
     for addresses in batched(watching, 1000):
-        print(f"{addresses=}")
         info = await get_addresses_info(addresses)
         if not info:
             print("No addresses info returned.")
             continue
-        pp(info)
         for i in info:
             if not has_missed_blocks(i):
                 continue

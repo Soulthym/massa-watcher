@@ -44,7 +44,8 @@ To do this:
 1) find your node id by running `get_status` in your node's client. It will be near the top of the response.
 2) find your node's IP address by running `ip a s` in the terminal on the node's machine (in the shell, not in the massa client)
 3) find your bot's IP address by running `ip a s` in the terminal on the bot's machine (in the shell)
-4) edit `node_config.toml` with the following values:
+4) whitelist your bot's IP in your node's client with `node_bootstrap_whitelist add $YOUR_BOT_IP`.
+5) edit `node_config.toml` with the following values:
 
 ```toml
 [api]
@@ -53,7 +54,7 @@ To do this:
 [bootstrap]
     # list of bootstrap (ip, node id)
     bootstrap_list = [
-        ["$YOUR_IP:31245", "$YOUR_NODE_ID"],
+        ["$YOUR_NODE_IP:31245", "$YOUR_NODE_ID"],
     ]
 ```
 

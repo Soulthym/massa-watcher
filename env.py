@@ -102,16 +102,19 @@ def command(f = None, /, cmd=None, **arg_specs):
 
 type Func = Callable[..., Any]
 type CmdInfo = tuple[Signature, dict[str, str], Func, Func]
+
 def build_command_usage(cmd: str, info: CmdInfo) -> str:
     sig, _, f, _ = info
     args = " ".join(name for name in sig.parameters if name not in ("event", "cmd"))
     if not args:
         return f"/{cmd}"
     return f"/{cmd} {args}"
+
 def doc(cmd: str, info: CmdInfo) -> str:
     _, _, f, _ = info
     docstr = dedent(f.__doc__ or "").strip()
     return build_command_usage(cmd, info) + (" - " + docstr if docstr else "")
+
 def doc_line(cmd: str, info: CmdInfo) -> str:
     _, _, f, _ = info
     docstr = dedent(f.__doc__ or "").strip().partition("\n")[0]

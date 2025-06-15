@@ -85,7 +85,7 @@ async def start(event, cmd):
     ])
     await event.reply("\n".join(msg))
 
-address_pat = r"AU[1-9A-HJ-NP-Za-hj-np-z]{51}"
+address_pat = r"AU[1-9A-HJ-NP-Za-hj-np-z]+"
 @command(address=address_pat)
 async def watch(event, address: str):
     # Here you would add the logic to start watching the address

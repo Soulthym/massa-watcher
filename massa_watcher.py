@@ -5,6 +5,7 @@ from env import bot
 from env import command
 from env import TG_USERNAME
 from env import TG_ADMIN
+from env import build_default_commands
 
 from datetime import datetime
 from datetime import timedelta
@@ -55,34 +56,6 @@ def write_csv(file_path, data: Watching):
 
 watching_file = data_dir / "watching.csv"
 watching, rev_watching = read_csv(watching_file)
-
-def get_name(user, prefix=""):
-    name_parts = []
-    if getattr(user, "first_name", None):
-        name_parts.append(user.first_name.strip())
-    if getattr(user, "last_name", None):
-        name_parts.append(user.last_name.strip())
-    if not name_parts and getattr(user, "username", None):
-        name_parts.append(f"@{user.username.strip()}")
-    if not name_parts:
-        return ""
-    return prefix + " ".join(name_parts)
-
-@command(cmd="start|help")
-async def start(event, cmd):
-    cmd = event.pattern_match.group("cmd")
-    name = get_name(event.sender, prefix=", ")
-    msg = []
-    if cmd == "start":
-        msg.extend([f"Hello{name}!", "I am your Massa node watcher bot.", ""])
-    msg.extend([
-        "Available commands:",
-        "/start - Start the bot",
-        "/help - Show available commands",
-        "/watch <address> - Track a staking massa address",
-        "/unwatch <address> - Stop tracking a staking massa address",
-    ])
-    await event.reply("\n".join(msg))
 
 address_pat = r"AU[1-9A-HJ-NP-Za-hj-np-z]+"
 @command(address=address_pat)
@@ -249,6 +222,7 @@ async def main():
         write_csv(watching_file, watching)
 
 if __name__ == "__main__":
+    build_default_commands()  # Register commands with the bot
     with bot:
         back_off = 10  # Initial backoff time in seconds
         last_exception = datetime.now() - timedelta(minutes=5)

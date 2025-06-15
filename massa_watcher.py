@@ -60,7 +60,13 @@ watching, rev_watching = read_csv(watching_file)
 address_pat = r"AU[1-9A-HJ-NP-Za-hj-np-z]+"
 @command(address=address_pat)
 async def watch(event, address: str):
-    # Here you would add the logic to start watching the address
+    """\
+    Start watching a staking address.
+    Usage: /watch <address>
+    args:
+    - address: Your Massa address.
+      pattern: /AU[1-9A-HJ-NP-Za-hj-np-z]+/
+    """
     user = event.sender_id
     if address not in watching:
         watching[address] = {}
@@ -74,7 +80,13 @@ async def watch(event, address: str):
 
 @command(address=address_pat)
 async def unwatch(event, address):
-    # Here you would add the logic to start watching the address
+    """\
+    Stop watching a staking address.
+    Usage: /unwatch <address>
+    args:
+    - address: Your Massa address.
+      pattern: /AU[1-9A-HJ-NP-Za-hj-np-z]+/
+    """
     user = event.sender_id
     if address not in watching:
         return await event.reply("You are not watching any addresses.")
@@ -87,6 +99,10 @@ async def unwatch(event, address):
 
 @command
 async def status(event):
+    """\
+    Show the status of your watched addresses.
+    Usage: /status
+    """
     user = event.sender_id
     addresses = rev_watching.get(user, [])
     if not addresses:

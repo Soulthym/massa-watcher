@@ -1,9 +1,13 @@
 from telethon import TelegramClient
 from telethon import Button
 from telethon import events
-from inspect import signature
 
+from inspect import Signature
+from inspect import signature
 from pathlib import Path
+from typing import Callable
+from typing import Any
+import itertools
 import os
 
 dot = Path(__file__).parent
@@ -92,16 +96,26 @@ def command(f = None, /, cmd=None, **arg_specs):
         return await f(*bound_args.args, **bound_args.kwargs)
     if cmd in commands:
         raise ValueError(f"Command {cmd!r} is already registered as {commands[cmd]!r}")
-    commands[cmd] = (sig, arg_specs, handler)
+    commands[cmd] = (sig, arg_specs, f, handler)
     return handler
 
-def build_command_list():
-    return [
-        "/start - Start the bot",
-        "/help - Show available commands",
-        "/watch <address> - Track a staking massa address",
-        "/unwatch <address> - Stop tracking a staking massa address",
+type Func = Callable[..., Any]
+def doc_line(cmd: str, info: tuple[Signature, dict[str, str], Func, Func]) -> str:
+    sig, _, f, _ = info
+    args = " ".join(name for name in sig.parameters if name not in ("event", "cmd"))
+    docstr = (f.__doc__ or "").strip().partition("\n")[0]
+    print(f"Command {cmd!r} has args: {args!r}, docstr: {docstr!r}")
+    return f"/{cmd} {args}" + (" - " + docstr)
+
+def build_command_list(cmd: str):
+    default_commands = [
+        "/start - " + ("Show this menu" if cmd == "start" else "Start menu"),
+        "/help - " + ("Show this menu" if cmd == "help" else "Show available commands"),
     ]
+    return itertools.chain(
+        (d for d in default_commands),
+        (doc_line(cmd, info) for cmd, info in commands.items() if cmd != "start|help"),
+    )
 
 def build_default_commands():
     @command(cmd="start|help")
@@ -112,7 +126,9 @@ def build_default_commands():
             msg.extend([f"Hello{name}!", "I am your Massa node watcher bot.", ""])
         msg.extend([
             "Available commands:",
-            *build_command_list(),
+            "<i><b>Format:</b>",
+            "/&lt;command&gt; &lt;args&gt; ... [&lt;optional_args&gt; ...] - description</i>",
+            "",
+            *build_command_list(cmd),
         ])
-        await event.reply("\n".join(msg))
-
+        await event.reply("\n".join(msg), parse_mode="html")

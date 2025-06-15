@@ -188,7 +188,7 @@ async def massa_node():
         raise ValueError(f"Massa node executable not found at {massa_node_path}")
     print(f"Running Massa node from {massa_node_path}")
     async with run_bg_shell([str(massa_node_path), "-a", "-p", "password"],
-                      then=kill_node):
+                            then=lambda _: kill_node()):
         print("Massa node is running. Press Ctrl+C to stop.")
         # Keep the main task running to allow background process to run
         yield

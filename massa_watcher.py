@@ -68,6 +68,11 @@ async def watch(event, address: str):
       pattern: /AU[1-9A-HJ-NP-Za-hj-np-z]+/
     """
     user = event.sender_id
+    info = await get_addresses_info((address,))
+    if not api_started:
+        return await event.reply("API is still starting. Please try again in a few minutes.")
+    if not info:
+        return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
     if address not in watching:
         watching[address] = {}
     if user not in rev_watching:
@@ -95,7 +100,7 @@ async def unwatch(event, address):
     if user in rev_watching and address in rev_watching[user]:
         rev_watching[user].remove(address)
     watching[address].pop(user, None)
-    await event.reply(f"Stoped watching address: {address}")
+    await event.reply(f"Stopped watching address: {address}")
 
 @command
 async def status(event):
@@ -109,15 +114,17 @@ async def status(event):
         return await event.reply("You are not watching any addresses.\nUse /watch <address> to start watching a staking address.")
     msg = []
     info = await get_addresses_info(addresses)
+    if not api_started:
+        return await event.reply("API is still starting. Please try again in a few minutes.")
     if not info:
         return await event.reply("No information available for your watched addresses.")
     for i in info:
         msg.append(message_notification(i) or "No information available for this address.")
     return await event.reply("\n".join(msg) if msg else "No address found?.", parse_mode="html")
 
-started = False
+api_started = False
 async def get_addresses_info(addresses: Iterable[str]):
-    global started
+    global api_started
     try:
         async with aiohttp.ClientSession() as session:
             url = "http://localhost:33035"
@@ -133,13 +140,13 @@ async def get_addresses_info(addresses: Iterable[str]):
                     raise ValueError(f"Failed to get addresses info: {response.status}")
                 data = await response.json()
                 result = data.get("result", [])
-                if not started:
+                if not api_started:
                     print("API started successfully.")
                     await bot.send_message(TG_ADMIN, "API started successfully.")
-                started = True
+                api_started = True
                 return result
     except Exception as e:
-        if started:
+        if api_started:
             print(f"Error fetching addresses info: {e}")
             await bot.send_message(TG_ADMIN, f"Error fetching addresses info: {e}")
             raise

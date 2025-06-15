@@ -71,10 +71,11 @@ async def download_massa_node() -> tuple[Path, bool]:
     expected_file_hash = await get_checksum(checksum_url, file_name)
     print(f"Checksum for {file_name}: {expected_file_hash}")
     file = data_dir / file_name
-    file_hash = hashlib.sha256(file.read_bytes()).hexdigest()
-    if file.exists() and file_hash == expected_file_hash:
-        print(f"File {file_name} already exists and is verified with checksum {file_hash}.")
-        return file, False
+    if file.exists():
+        file_hash = hashlib.sha256(file.read_bytes()).hexdigest()
+        if file_hash == expected_file_hash:
+            print(f"File {file_name} already exists and is verified with checksum {file_hash}.")
+            return file, False
     # Otherwise, download the file
     async with aiohttp.ClientSession() as session:
         async with session.get(file_url) as response:
@@ -85,9 +86,9 @@ async def download_massa_node() -> tuple[Path, bool]:
             if file_hash != expected_file_hash:
                 raise ValueError(f"Checksum mismatch: expected {expected_file_hash}, got {file_hash}")
             print(f"Downloaded and verified {file_name} successfully.")
-            with file_name.open("wb") as f:
+            with file.open("wb") as f:
                 f.write(content)
-                return file_name, True
+                return file, True
 
 async def unpack(targz: Path, dest: Path):
     if not targz.exists():

@@ -1,6 +1,8 @@
 from pathlib import Path
-from env import dot
 from env import data_dir
+from env import loglevel
+from env import log
+from env import dot
 import contextlib
 import platform
 import hashlib
@@ -15,9 +17,9 @@ def kill_node():
     import subprocess
     try:
         subprocess.run(["pkill", "-f", "massa-node"], check=True)
-        print("Massa node process killed successfully.")
+        log("Massa node process killed successfully.")
     except subprocess.CalledProcessError:
-        print("No Massa node process found to kill.")
+        log("No Massa node process found to kill.")
 
 kill_node()  # Ensure any previous node is killed before starting a new one
 
@@ -65,16 +67,16 @@ async def get_checksum(checksum_url: str, file: str) -> str:
 
 async def download_massa_node() -> tuple[Path, bool]:
     (version, file_name) = await massa_get_latest_release()
-    print(f"Latest version: {version}, file: {file_name}")
+    log(f"Latest version: {version}, file: {file_name}")
     file_url = f"https://github.com/massalabs/massa/releases/download/{version}/{file_name}"
     checksum_url = f"https://github.com/massalabs/massa/releases/download/{version}/checksums.txt"
     expected_file_hash = await get_checksum(checksum_url, file_name)
-    print(f"Checksum for {file_name}: {expected_file_hash}")
+    log(f"Checksum for {file_name}: {expected_file_hash}")
     file = data_dir / file_name
     if file.exists():
         file_hash = hashlib.sha256(file.read_bytes()).hexdigest()
         if file_hash == expected_file_hash:
-            print(f"File {file_name} already exists and is verified with checksum {file_hash}.")
+            log(f"File {file_name} already exists and is verified with checksum {file_hash}.")
             return file, False
     # Otherwise, download the file
     async with aiohttp.ClientSession() as session:
@@ -85,7 +87,7 @@ async def download_massa_node() -> tuple[Path, bool]:
             file_hash = hashlib.sha256(content).hexdigest()
             if file_hash != expected_file_hash:
                 raise ValueError(f"Checksum mismatch: expected {expected_file_hash}, got {file_hash}")
-            print(f"Downloaded and verified {file_name} successfully.")
+            log(f"Downloaded and verified {file_name} successfully.")
             with file.open("wb") as f:
                 f.write(content)
                 return file, True
@@ -95,17 +97,17 @@ async def unpack(targz: Path, dest: Path):
         raise ValueError(f"File {targz} does not exist.")
     with tarfile.open(targz, "r:gz") as tar:
         tar.extractall(path=dest)
-        print(f"Unpacked {targz} to {dest}")
+        log(f"Unpacked {targz} to {dest}")
 
 async def configure_massa_node():
     config_files = [
         (dot/"node_config.toml", data_dir/"massa"/"massa-node"/"config"/"config.toml"),
     ]
-    print("Deplpying configuration files for Massa node.")
+    log("Deploying configuration files for Massa node.")
     for src, dest in config_files:
         if not src.exists():
             raise ValueError(f"Source file {src} does not exist.")
-        print(f"Copying {str(src)} to {str(dest)}")
+        log(f"Copying {str(src)} to {str(dest)}")
         shutil.copy(src, dest)
 
 async def install_massa_node():
@@ -116,9 +118,9 @@ async def install_massa_node():
 
 class BackgroundProcess:
     def __init__(self, cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL):
-        print(f"Initializing background process with command: {cmd}")
+        log(f"Initializing background process with command: {cmd}")
         self.path = Path(cmd[0]).parent
-        print(f"Process path set to: {self.path}")
+        log(f"Process path set to: {self.path}")
         self.cmd = cmd
         self.process = None
         self.stdin = stdin
@@ -134,17 +136,17 @@ class BackgroundProcess:
             stdout=self.stdout,
             stderr=self.stderr,
         )
-        print(f"Started background process with PID {self.process.pid}")
+        log(f"Started background process with PID {self.process.pid}")
         os.chdir(old_path)
 
     async def stop(self):
         if self.process and self.process.returncode is None:
-            print(f"Terminating background process with PID {self.process.pid}")
+            log(f"Terminating background process with PID {self.process.pid}")
             self.process.terminate()
             try:
                 await asyncio.wait_for(self.process.wait(), timeout=5)
             except asyncio.TimeoutError | asyncio.CancelledError:
-                print("Force killing process")
+                log(loglevel.error, "Force killing process")
                 self.process.kill()
                 await self.process.wait()
 
@@ -158,16 +160,16 @@ class BackgroundProcess:
             while True:
                 line = await stream.readline()
                 if line:
-                    print(f"[{label}] {line.decode().rstrip()}")
+                    log(f"[{label}] {line.decode().rstrip()}")
                 else:
                     await asyncio.sleep(0.1)  # Avoid busy waiting
         except asyncio.CancelledError:
-            print(f"[{label}] Reading output cancelled.")
+            log(f"[{label}] Reading output cancelled.")
         except KeyboardInterrupt:
-            print(f"[{label}] Reading output interrupted by user.")
+            log(f"[{label}] Reading output interrupted by user.")
         except Exception as e:
-            print(f"[{label}] Exception while reading output: {e}")
-            print(f"[{label}] Stream closed.")
+            log(f"[{label}] Exception while reading output: {e}")
+            log(f"[{label}] Stream closed.")
 
 @contextlib.asynccontextmanager
 async def run_bg_shell(cmd, then=None):
@@ -187,9 +189,9 @@ async def massa_node():
     massa_node_path = data_dir / "massa" / "massa-node" / "massa-node"
     if not massa_node_path.exists():
         raise ValueError(f"Massa node executable not found at {massa_node_path}")
-    print(f"Running Massa node from {massa_node_path}")
+    log(f"Running Massa node from {massa_node_path}")
     async with run_bg_shell([str(massa_node_path), "-a", "-p", "password"],
                             then=lambda _: kill_node()):
-        print("Massa node is running. Press Ctrl+C to stop.")
+        log("Massa node is running. Press Ctrl+C to stop.")
         # Keep the main task running to allow background process to run
         yield

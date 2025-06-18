@@ -1,3 +1,4 @@
+from datetime import datetime
 from telethon import TelegramClient
 from telethon import Button
 from telethon import events
@@ -8,6 +9,7 @@ from inspect import signature
 from pathlib import Path
 from typing import Callable
 from typing import Any
+import sys
 import itertools
 import os
 
@@ -16,6 +18,8 @@ data_dir = dot / "data"
 data_dir.mkdir(exist_ok=True, parents=True)
 session_dir = data_dir / "sessions"
 session_dir.mkdir(exist_ok=True, parents=True)
+log_file = data_dir / "log.txt"
+log_file.touch(exist_ok=True)
 
 TG_API_ID = int(os.environ["TG_API_ID"])
 TG_API_HASH = os.environ["TG_API_HASH"]
@@ -25,6 +29,20 @@ TG_ADMIN = os.environ["TG_ADMIN"].lstrip("@")
 
 bot = TelegramClient(session_dir/TG_USERNAME, TG_API_ID, TG_API_HASH).start(bot_token=TG_BOT_TOKEN)
 
+class Loglevel:
+    debug = "DEBUG"
+    info = "INFO"
+    warn = "WARNING"
+    error = "ERROR"
+    critical = "CRITICAL"
+loglevel = Loglevel()
+def log(*a, level=loglevel.info, **kw):
+    """Log messages to the log file."""
+    prefix = datetime.now().strftime(f"{level}[%Y-%m-%d %H:%M:%S]")
+    default_f = kw.pop("file", sys.stderr)  # Remove file from kwargs, we handle it ourselves
+    with open(log_file, "a", encoding="utf-8") as f:
+        print(prefix, *a, **kw, file=f)
+    print(prefix, *a, **kw, file=default_f)
 def get_name(user, prefix=""):
     name_parts = []
     if getattr(user, "first_name", None):

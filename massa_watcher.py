@@ -6,6 +6,8 @@ from env import command
 from env import TG_USERNAME
 from env import TG_ADMIN
 from env import build_default_commands
+from env import log
+from env import loglevel
 
 from datetime import datetime
 from datetime import timedelta
@@ -39,7 +41,7 @@ def read_csv(file_path) -> tuple[Watching, RevWatching]:
     """Read a CSV file and return a list of dictionaries."""
     if not file_path.exists():
         write_csv(file_path, {})
-    print(f"Reading CSV file: {file_path}")
+    log(f"Reading CSV file: {file_path}")
     with file_path.open("r") as f:
         reader = csv.DictReader(f)
         res: Watching = {}
@@ -58,12 +60,12 @@ def read_csv(file_path) -> tuple[Watching, RevWatching]:
 
 def write_csv(file_path, data: Watching):
     """Write a list of dictionaries to a CSV file."""
-    print(f"Writing {len(data)} entries to {file_path}")
+    log(f"Writing {len(data)} entries to {file_path}")
     with file_path.open("w+", newline='') as f:
         writer = csv.DictWriter(f, fieldnames=["address", "user"])
         writer.writeheader()
         for address, watched in data.items():
-            print(f"Writing address: {address} with users: {watched.users}")
+            log(f"Writing address: {address} with users: {watched.users}")
             for user in watched.users:
                 writer.writerow({"address": address, "user": str(user)})
 
@@ -154,17 +156,17 @@ async def get_addresses_info(addresses: Iterable[str]):
                 data = await response.json()
                 result = data.get("result", [])
                 if not api_started:
-                    print("API started successfully.")
+                    log("API started successfully.")
                     await bot.send_message(TG_ADMIN, "API started successfully.")
                 api_started = True
                 return result
     except Exception as e:
         if api_started:
-            print(f"Error fetching addresses info: {e}")
+            log(loglevel.error, f"Error fetching addresses info: {e}")
             await bot.send_message(TG_ADMIN, f"Error fetching addresses info: {e}")
             raise
         else:
-            print("API not started yet, retrying in 5 seconds...")
+            log(loglevel.warn, "API not started yet, retrying in 5 seconds...")
 
 def should_notify(info) -> bool:
     """Check if the address has missed blocks."""
@@ -207,7 +209,7 @@ async def notify_missed_blocks():
     for addresses in batched(watching, 1000):
         info = await get_addresses_info(addresses)
         if not info:
-            print("No addresses info returned.")
+            log(loglevel.warn, "No addresses info returned.")
             continue
         for i in info:
             if not should_notify(i):
@@ -224,16 +226,16 @@ async def watch_loop():
     back_off = 5  # Initial backoff time in seconds
     while True:
         try:
-            print("Checking for new blocks...")
+            log("Checking for new blocks...")
             await notify_missed_blocks()
             await asyncio.sleep(10)  # Check every 10 seconds
             back_off = 1  # Reset backoff on successful check
         except asyncio.CancelledError | KeyboardInterrupt:
-            print("Watch loop cancelled.")
+            log(loglevel.warn, "Watch loop cancelled.")
             break
         except Exception as e:
             msg = f"Error in watch loop: {e}\nBackoff time: {back_off} seconds"
-            print(msg)
+            log(loglevel.error, msg)
             await bot.send_message(TG_ADMIN, msg)
             await asyncio.sleep(back_off)
             back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
@@ -242,22 +244,22 @@ async def watch_loop():
 async def watch_blocks():
     loop = asyncio.get_event_loop()
     task = loop.create_task(watch_loop())
-    print("Started watch_blocks task.")
+    log("Started watch_blocks task.")
     yield
     task.cancel()
 
 async def main():
-    print("Connected to Telegram as", TG_USERNAME)
+    log("Connected to Telegram as", TG_USERNAME)
     try:
         async with massa_node(), watch_blocks():
             await bot.send_message(TG_ADMIN, f"Bot started successfully as {TG_USERNAME}.")
             await bot.run_until_disconnected()  # type: ignore
     except KeyboardInterrupt:
-        print("Bot stopped by user.")
+        log(loglevel.warn, "Bot stopped by user.")
         await bot.send_message(TG_ADMIN, "Bot stopped by user.")
         write_csv(watching_file, watching)
     except Exception as e:
-        print(f"Error in main: {e}")
+        log(loglevel.error, f"Error in main: {e}")
         await bot.send_message(TG_ADMIN, f"Error in main: {e}")
         write_csv(watching_file, watching)
 
@@ -271,13 +273,13 @@ if __name__ == "__main__":
                 bot.loop.run_until_complete(main())
             except KeyboardInterrupt:
                 write_csv(watching_file, watching)
-                print("Bot stopped by user.")
+                log(loglevel.warn, "Bot stopped by user.")
                 break
             except Exception as e:
                 write_csv(watching_file, watching)
                 if datetime.now() - last_exception < timedelta(minutes=5):
                     back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
-                print(f"Error in main loop: {e}")
+                log(loglevel.error, f"Error in main loop: {e}")
                 bot.loop.run_until_complete(bot.send_message(TG_ADMIN, f"Error in main loop: {e}"))
-                print("Restarting bot...")
+                log("Restarting bot...")
                 time.sleep(back_off)

@@ -166,13 +166,14 @@ async def get_addresses_info(addresses: Iterable[str]):
         else:
             print("API not started yet, retrying in 5 seconds...")
 
-def has_missed_blocks(info) -> bool:
+def should_notify(info) -> bool:
     """Check if the address has missed blocks."""
     if not info:
         return False
     address = info["address"]
     watched = watching[address]
     if watched.timestamp > int(datetime.now().timestamp() - time_offset.total_seconds()):
+        # If the address was recently checked, do not notify
         return False
     for cycle in info.get("cycle_infos", []):
         if cycle.get("nok_count", 0) > 0:
@@ -209,7 +210,7 @@ async def notify_missed_blocks():
             print("No addresses info returned.")
             continue
         for i in info:
-            if not has_missed_blocks(i):
+            if not should_notify(i):
                 continue
             address = i["address"]
             for user in watching[address].users:

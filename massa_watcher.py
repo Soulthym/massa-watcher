@@ -27,9 +27,9 @@ class Watched:
         self.timestamp: int = int(datetime.now().timestamp() - time_offset.total_seconds())
     def __contains__(self, user: int) -> bool:
         return user in self.users
-    async def notify(self):
+    async def notify(self, info):
         for user in self.users:
-            message = message_notification(self)
+            message = message_notification(info)
             if message is not None:
                 await bot.send_message(user, message, parse_mode="html")
         self.timestamp = int(datetime.now().timestamp())
@@ -215,10 +215,7 @@ async def notify_missed_blocks():
             if not should_notify(i):
                 continue
             address = i["address"]
-            for user in watching[address].users:
-                message = message_notification(i)
-                if message is not None:
-                    await bot.send_message(user, message, parse_mode="html")
+            await watching[address].notify(i)
         await asyncio.sleep(1)  # Rate limit to avoid overwhelming the node
 
 async def watch_loop():

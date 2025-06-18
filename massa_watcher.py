@@ -139,6 +139,7 @@ async def status(event):
 
 api_started = False
 async def get_addresses_info(addresses: Iterable[str]):
+    log("Fetching addresses info for:", addresses)
     global api_started
     try:
         async with aiohttp.ClientSession() as session:

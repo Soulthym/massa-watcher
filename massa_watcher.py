@@ -83,11 +83,11 @@ async def watch(event, address: str):
       pattern: AU[1-9A-HJ-NP-Za-km-z]+
     """
     user = event.sender_id
-    # if not api_started:
-    #     return await event.reply("API is still starting. Please try again in a few minutes.")
-    # info = await get_addresses_info((address,))
-    # if not info:
-    #     return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
+    if not api_started:
+        return await event.reply("API is still starting. Please try again in a few minutes.")
+    info = await get_addresses_info((address,))
+    if not info:
+        return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
     if address not in watching:
         watching[address] = Watched(address)
     if user not in rev_watching:

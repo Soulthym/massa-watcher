@@ -170,6 +170,10 @@ def has_missed_blocks(info) -> bool:
     """Check if the address has missed blocks."""
     if not info:
         return False
+    address = info["address"]
+    watched = watching[address]
+    if watched.timestamp > int(datetime.now().timestamp() - time_offset.total_seconds()):
+        return False
     for cycle in info.get("cycle_infos", []):
         if cycle.get("nok_count", 0) > 0:
             return True

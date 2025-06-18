@@ -16,12 +16,24 @@ import aiohttp
 import time
 import csv
 
-type Watching = dict[str, dict[int, int]]
-type RevWatching = dict[int, list[str]]
+time_offset = timedelta(minutes=5)
 
-def initial_timestamp():
-    """Return an initial timestamp for a new user watching an address."""
-    return int(datetime.now().timestamp()) - 2 * 60  # 2 minutes ago
+class Watched:
+    def __init__(self, address: str, *users: int):
+        self.address = address
+        self.users: set[int] = set(users)
+        self.timestamp: int = int(datetime.now().timestamp() - time_offset.total_seconds())
+    def __contains__(self, user: int) -> bool:
+        return user in self.users
+    async def notify(self):
+        for user in self.users:
+            message = message_notification(self)
+            if message is not None:
+                await bot.send_message(user, message, parse_mode="html")
+        self.timestamp = int(datetime.now().timestamp())
+
+type Watching = dict[str, Watched]
+type RevWatching = dict[int, list[str]]
 
 def read_csv(file_path) -> tuple[Watching, RevWatching]:
     """Read a CSV file and return a list of dictionaries."""
@@ -35,13 +47,13 @@ def read_csv(file_path) -> tuple[Watching, RevWatching]:
         for row in reader:
             key = row["address"]
             if key not in res:
-                res[key] = {}
+                res[key] = Watched(key)
             user = int(row["user"])
             if user not in rev:
                 rev[user] = []
             rev[user].append(key)
             if user not in res[key]:
-                res[key][user] = initial_timestamp()
+                res[key].users.add(user)
         return res, rev
 
 def write_csv(file_path, data: Watching):
@@ -50,8 +62,9 @@ def write_csv(file_path, data: Watching):
     with file_path.open("w+", newline='') as f:
         writer = csv.DictWriter(f, fieldnames=["address", "user"])
         writer.writeheader()
-        for address, users in data.items():
-            for user in users:
+        for address, watched in data.items():
+            print(f"Writing address: {address} with users: {watched.users}")
+            for user in watched.users:
                 writer.writerow({"address": address, "user": str(user)})
 
 watching_file = data_dir / "watching.csv"
@@ -68,19 +81,19 @@ async def watch(event, address: str):
       pattern: AU[1-9A-HJ-NP-Za-km-z]+
     """
     user = event.sender_id
-    info = await get_addresses_info((address,))
-    if not api_started:
-        return await event.reply("API is still starting. Please try again in a few minutes.")
-    if not info:
-        return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
+    # if not api_started:
+    #     return await event.reply("API is still starting. Please try again in a few minutes.")
+    # info = await get_addresses_info((address,))
+    # if not info:
+    #     return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
     if address not in watching:
-        watching[address] = {}
+        watching[address] = Watched(address)
     if user not in rev_watching:
         rev_watching[user] = []
     if user in watching[address]:
         return await event.reply(f"You are already watching address: {address}")
+    watching[address].users.add(user)
     rev_watching[user].append(address)
-    watching[address][user] = initial_timestamp()
     await event.reply(f"Started watching address: {address}")
 
 @command(address=address_pat)
@@ -99,7 +112,7 @@ async def unwatch(event, address):
         return await event.reply(f"You are not watching address: {address}")
     if user in rev_watching and address in rev_watching[user]:
         rev_watching[user].remove(address)
-    watching[address].pop(user, None)
+    watching[address].users.remove(user)
     await event.reply(f"Stopped watching address: {address}")
 
 @command
@@ -195,8 +208,7 @@ async def notify_missed_blocks():
             if not has_missed_blocks(i):
                 continue
             address = i["address"]
-            users = list(watching[address].keys())
-            for user in users:
+            for user in watching[address].users:
                 message = message_notification(i)
                 if message is not None:
                     await bot.send_message(user, message, parse_mode="html")

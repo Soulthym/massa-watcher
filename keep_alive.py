@@ -1,11 +1,13 @@
-import abc
-from contextlib import asynccontextmanager
-from env import log
 from env import loglevel
+from env import log
+
+from contextlib import asynccontextmanager
+from traceback import format_exc
 from pathlib import Path
 
 import asyncio
 import time
+import abc
 import os
 
 start_time = time.time()
@@ -69,7 +71,7 @@ class KeepAlive(BGTask):
                 print("Keep alive interrupted by user.")
                 return
             except Exception as e:
-                print(f"Keep alive encountered an error: {e}")
+                print(f"Keep alive encountered an error: {e}\n{format_exc()}")
                 await asyncio.sleep(self.interval)
 
     async def keep_alive_inner(self, condition):
@@ -132,5 +134,5 @@ class BGProcess(KeepAlive):
         except KeyboardInterrupt:
             log(f"[{label}] Reading output interrupted by user.")
         except Exception as e:
-            log(f"[{label}] Exception while reading output: {e}")
+            log(f"[{label}] Exception while reading output: {e}\n{format_exc()}")
             log(f"[{label}] Stream closed.")

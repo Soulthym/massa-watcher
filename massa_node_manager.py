@@ -4,6 +4,7 @@ from env import log
 from env import dot
 from keep_alive import BGProcess
 
+from traceback import format_exc
 from pathlib import Path
 from pprint import pp
 from collections.abc import Callable
@@ -151,7 +152,7 @@ async def check_massa_alive() -> bool:
             return len(result["connected_nodes"]) > 0
         return False
     except Exception as e:
-        log(f"Error checking Massa node status: {e}")
+        log(f"Error checking Massa node status: {e}\n{format_exc()}")
         return False
 
 @contextlib.asynccontextmanager

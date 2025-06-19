@@ -12,6 +12,7 @@ from env import loglevel
 from datetime import datetime
 from datetime import timedelta
 from itertools import batched
+from traceback import format_exc
 import contextlib
 import asyncio
 import aiohttp
@@ -138,9 +139,10 @@ async def status(event):
     return await event.reply("\n".join(msg) if msg else "No address found?.", parse_mode="html")
 
 api_started = False
+last_api_call = datetime.now() - time_offset
 async def get_addresses_info(addresses: Iterable[str]):
     log("Fetching addresses info for:", addresses)
-    global api_started
+    global api_started, last_api_call
     try:
         async with aiohttp.ClientSession() as session:
             url = "http://localhost:33035"
@@ -161,10 +163,12 @@ async def get_addresses_info(addresses: Iterable[str]):
                     log("API started successfully.")
                     await bot.send_message(TG_ADMIN, "API started successfully.")
                 api_started = True
+                last_api_call = datetime.now()
                 return result
     except Exception as e:
+        print_
         if api_started:
-            log(loglevel.error, f"Error fetching addresses info: {e}")
+            log(loglevel.error, f"Error fetching addresses info: {e}\n{format_exc()}")
         else:
             log(loglevel.warn, "API not started yet, retrying in 5 seconds...")
 
@@ -227,11 +231,14 @@ async def watch_loop():
             await notify_missed_blocks()
             await asyncio.sleep(10)  # Check every 10 seconds
             back_off = 1  # Reset backoff on successful check
-        except asyncio.CancelledError | KeyboardInterrupt:
+        except asyncio.CancelledError:
             log(loglevel.warn, "Watch loop cancelled.")
             break
+        except KeyboardInterrupt:
+            log(loglevel.warn, "Watch loop cancelled by user.")
+            break
         except Exception as e:
-            msg = f"Error in watch loop: {e}\nBackoff time: {back_off} seconds"
+            msg = f"Error in watch loop: {e}\n{format_exc()}\nBackoff time: {back_off} seconds"
             log(loglevel.error, msg)
             await bot.send_message(TG_ADMIN, msg)
             await asyncio.sleep(back_off)
@@ -256,8 +263,8 @@ async def main():
         await bot.send_message(TG_ADMIN, "Bot stopped by user.")
         write_csv(watching_file, watching)
     except Exception as e:
-        log(loglevel.error, f"Error in main: {e}")
-        await bot.send_message(TG_ADMIN, f"Error in main: {e}")
+        log(loglevel.error, f"Error in main: {e}\n{format_exc()}")
+        await bot.send_message(TG_ADMIN, f"Error in main: {e}\n{format_exc()}")
         write_csv(watching_file, watching)
 
 if __name__ == "__main__":
@@ -276,7 +283,7 @@ if __name__ == "__main__":
                 write_csv(watching_file, watching)
                 if datetime.now() - last_exception < timedelta(minutes=5):
                     back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
-                log(loglevel.error, f"Error in main loop: {e}")
-                bot.loop.run_until_complete(bot.send_message(TG_ADMIN, f"Error in main loop: {e}"))
+                log(loglevel.error, f"Error in main loop: {e}\n{format_exc()}")
+                bot.loop.run_until_complete(bot.send_message(TG_ADMIN, f"Error in main loop: {e}\n{format_exc()}"))
                 log("Restarting bot...")
                 time.sleep(back_off)

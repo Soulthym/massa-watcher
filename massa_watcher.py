@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from massa_node_manager import massa_node
+from massa_node_manager import run_massa_node
 from env import data_dir
 from env import bot
 from env import command
@@ -83,9 +83,9 @@ async def watch(event, address: str):
       pattern: AU[1-9A-HJ-NP-Za-km-z]+
     """
     user = event.sender_id
+    info = await get_addresses_info((address,))
     if not api_started:
         return await event.reply("API is still starting. Please try again in a few minutes.")
-    info = await get_addresses_info((address,))
     if not info:
         return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
     if address not in watching:
@@ -156,6 +156,7 @@ async def get_addresses_info(addresses: Iterable[str]):
                     raise ValueError(f"Failed to get addresses info: {response.status}")
                 data = await response.json()
                 result = data.get("result", [])
+                print(f"API started: {api_started}")
                 if not api_started:
                     log("API started successfully.")
                     await bot.send_message(TG_ADMIN, "API started successfully.")
@@ -164,8 +165,6 @@ async def get_addresses_info(addresses: Iterable[str]):
     except Exception as e:
         if api_started:
             log(loglevel.error, f"Error fetching addresses info: {e}")
-            await bot.send_message(TG_ADMIN, f"Error fetching addresses info: {e}")
-            raise
         else:
             log(loglevel.warn, "API not started yet, retrying in 5 seconds...")
 
@@ -249,7 +248,7 @@ async def watch_blocks():
 async def main():
     log("Connected to Telegram as", TG_USERNAME)
     try:
-        async with massa_node(), watch_blocks():
+        async with run_massa_node(), watch_blocks():
             await bot.send_message(TG_ADMIN, f"Bot started successfully as {TG_USERNAME}.")
             await bot.run_until_disconnected()  # type: ignore
     except KeyboardInterrupt:

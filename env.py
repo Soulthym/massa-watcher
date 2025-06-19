@@ -35,7 +35,9 @@ class Loglevel:
     warn = "WARNING"
     error = "ERROR"
     critical = "CRITICAL"
+
 loglevel = Loglevel()
+
 def log(*a, level=loglevel.info, **kw):
     """Log messages to the log file."""
     prefix = datetime.now().strftime(f"{level}[%Y-%m-%d %H:%M:%S]")
@@ -43,6 +45,7 @@ def log(*a, level=loglevel.info, **kw):
     with open(log_file, "a", encoding="utf-8") as f:
         print(prefix, *a, **kw, file=f, flush=True)
     print(prefix, *a, **kw, file=default_f, flush=True)
+
 def get_name(user, prefix=""):
     name_parts = []
     if getattr(user, "first_name", None):

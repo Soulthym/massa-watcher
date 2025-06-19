@@ -1,25 +1,25 @@
-from collections.abc import Iterable
 from massa_node_manager import run_massa_node
-from env import data_dir
-from env import bot
-from env import command
+from env import build_default_commands
 from env import TG_USERNAME
 from env import TG_ADMIN
-from env import build_default_commands
-from env import log
 from env import loglevel
+from env import data_dir
+from env import command
+from env import bot
+from env import log
 
-from datetime import datetime
-from datetime import timedelta
-from itertools import batched
 from traceback import format_exc
-import contextlib
+from datetime import timedelta
+from datetime import datetime
+from itertools import batched
+
 import asyncio
 import aiohttp
 import time
 import csv
 
 time_offset = timedelta(minutes=5)
+api_started = False
 
 class Watched:
     def __init__(self, address: str, *users: int):
@@ -84,7 +84,7 @@ async def watch(event, address: str):
       pattern: AU[1-9A-HJ-NP-Za-km-z]+
     """
     user = event.sender_id
-    info = await get_addresses_info((address,))
+    info = await get_addresses_info(address)
     if not api_started:
         return await event.reply("API is still starting. Please try again in a few minutes.")
     if not info:
@@ -129,7 +129,7 @@ async def status(event):
     if not addresses:
         return await event.reply("You are not watching any addresses.\nUse /watch <address> to start watching a staking address.")
     msg = []
-    info = await get_addresses_info(addresses)
+    info = await get_addresses_info(*addresses)
     if not api_started:
         return await event.reply("API is still starting. Please try again in a few minutes.")
     if not info:
@@ -138,11 +138,12 @@ async def status(event):
         msg.append(message_notification(i) or "No information available for this address.")
     return await event.reply("\n".join(msg) if msg else "No address found?.", parse_mode="html")
 
-api_started = False
-last_api_call = datetime.now() - time_offset
-async def get_addresses_info(addresses: Iterable[str]):
-    log("Fetching addresses info for:", addresses)
-    global api_started, last_api_call
+async def get_addresses_info(*addresses: str):
+    if len(addresses) < 10:
+        log("Fetching addresses info for:", addresses)
+    else:
+        log(f"Fetching info for {len(addresses)} addresses, this may take a while...")
+    global api_started
     try:
         async with aiohttp.ClientSession() as session:
             url = "http://localhost:33035"
@@ -163,13 +164,13 @@ async def get_addresses_info(addresses: Iterable[str]):
                     log("API started successfully.")
                     await bot.send_message(TG_ADMIN, "API started successfully.")
                 api_started = True
-                last_api_call = datetime.now()
                 return result
     except Exception as e:
         if api_started:
-            log(loglevel.error, f"Error fetching addresses info: {e}\n{format_exc()}")
+            log(loglevel.error, f"Error fetching addresses info: {e}")
         else:
             log(loglevel.warn, "API not started yet, retrying in 5 seconds...")
+        return None
 
 def should_notify(info) -> bool:
     """Check if the address has missed blocks."""
@@ -209,8 +210,12 @@ def message_notification(info) -> (str | None):
     return "\n  ".join(message)
 
 async def notify_missed_blocks():
-    for addresses in batched(watching, 1000):
-        info = await get_addresses_info(addresses)
+    global api_started
+    api_started = True  # Ensure API is marked as started
+    cutoff = int(datetime.now().timestamp() - time_offset.total_seconds())
+    filtered = {k: v for k, v in watching.items() if v.timestamp < cutoff}
+    for addresses in batched(filtered, 1000):
+        info = await get_addresses_info(*addresses)
         if not info:
             log(loglevel.warn, "No addresses info returned.")
             continue
@@ -221,40 +226,14 @@ async def notify_missed_blocks():
             await watching[address].notify(i)
         await asyncio.sleep(1)  # Rate limit to avoid overwhelming the node
 
-async def watch_loop():
-    """Main loop to check for new blocks and notify users."""
-    back_off = 5  # Initial backoff time in seconds
-    while True:
-        try:
-            log("Checking for new blocks...")
-            await notify_missed_blocks()
-            await asyncio.sleep(10)  # Check every 10 seconds
-            back_off = 1  # Reset backoff on successful check
-        except asyncio.CancelledError:
-            log(loglevel.warn, "Watch loop cancelled.")
-            break
-        except KeyboardInterrupt:
-            log(loglevel.warn, "Watch loop cancelled by user.")
-            break
-        except Exception as e:
-            msg = f"Error in watch loop: {e}\n{format_exc()}\nBackoff time: {back_off} seconds"
-            log(loglevel.error, msg)
-            await bot.send_message(TG_ADMIN, msg)
-            await asyncio.sleep(back_off)
-            back_off = min(back_off * 1.5, 60*10)  # Cap backoff at 10 minutes
-
-@contextlib.asynccontextmanager
-async def watch_blocks():
-    loop = asyncio.get_event_loop()
-    task = loop.create_task(watch_loop())
-    log("Started watch_blocks task.")
-    yield
-    task.cancel()
+async def on_disconnect():
+    global api_started
+    api_started = False  # Reset API status on disconnect
 
 async def main():
     log("Connected to Telegram as", TG_USERNAME)
     try:
-        async with run_massa_node(), watch_blocks():
+        async with run_massa_node(notify_missed_blocks, on_disconnect=on_disconnect):
             await bot.send_message(TG_ADMIN, f"Bot started successfully as {TG_USERNAME}.")
             await bot.run_until_disconnected()  # type: ignore
     except KeyboardInterrupt:

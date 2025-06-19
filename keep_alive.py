@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Callable, Coroutine
+from env import time_offset
 from env import loglevel
 from env import log
 
@@ -6,22 +9,8 @@ from traceback import format_exc
 from pathlib import Path
 
 import asyncio
-import time
 import abc
 import os
-
-start_time = time.time()
-
-async def check_alive():
-    # simulate 10 seconds of startup time
-    delta = time.time() - start_time
-    if delta < 3:
-        return False
-    if delta < 5:
-        return True
-    if delta < 7:
-        return False
-    return False
 
 class BGTask(abc.ABC):
     @abc.abstractmethod
@@ -34,16 +23,23 @@ class BGTask(abc.ABC):
         """Stop the background task."""
         pass
 
-    @abc.abstractmethod
-    async def read_output(self, label):
-        """Read output from the background task."""
-        pass
+async def atry(f, *args, **kwargs):
+    try:
+        return await f(*args, **kwargs)
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        print(f"Cancelled {f.__name__} task.")
+        raise
+    except Exception as e:
+        log(f"Error in {f.__name__}: {e}\n{format_exc()}")
 
 class KeepAlive(BGTask):
-    def __init__(self, check_alive, interval=10):
+    def __init__(self, check_alive, interval=10, background_tasks=(), on_disconnect=None):
         self.interval = interval
         self.check_alive = check_alive
+        self.last_alive = datetime.now() - time_offset
         self.started = False
+        self.background_tasks: tuple[Callable[[], Coroutine]] = background_tasks
+        self.on_disconnect: Callable[[], Coroutine] | None = on_disconnect
 
     @asynccontextmanager
     async def keep_alive(self):
@@ -59,24 +55,48 @@ class KeepAlive(BGTask):
         while True:
             try:
                 await self.start()
-                await self.keep_alive_inner(lambda: not self.started)
+                await self.wait_for_live_signal()
                 log("Got a live signal, starting keep alive loop.")
-                await self.keep_alive_inner(lambda: self.started)
+                await self.wait_for_lost_signal()
                 log("Live signal lost, restarting background task.")
                 await self.stop()
-            except asyncio.CancelledError:
+            except (asyncio.CancelledError, KeyboardInterrupt):
                 print("Keep alive cancelled.")
-                return
-            except KeyboardInterrupt:
-                print("Keep alive interrupted by user.")
-                return
+                await self.stop()
+                raise
             except Exception as e:
                 print(f"Keep alive encountered an error: {e}\n{format_exc()}")
                 await asyncio.sleep(self.interval)
 
-    async def keep_alive_inner(self, condition):
+    async def wait_for_live_signal(self):
+        while True:
+            self.started = await self.check_alive()
+            if self.started:
+                print("Live signal received.")
+                break
+            print("Waiting for live signal...")
+            await asyncio.sleep(self.interval)
+        self.last_alive = datetime.now()
+
+    async def wait_for_lost_signal(self):
+        while self.started:
+            self.started = await self.check_alive()
+            if not self.started:
+                print("Lost signal, restarting background tasks...")
+                break
+            print("Waiting for lost signal...")
+            self.last_alive = datetime.now()
+            for task in self.background_tasks:
+                await task()
+            await asyncio.sleep(self.interval)
+
+    async def keep_alive_inner(self, running=False):
+        print(f"{running=}")
+        condition = lambda: not self.started if running else lambda: self.started
         while condition():
             print(f"Keep alive: {self.started}")
+            if running:
+                self.last_alive = datetime.now() - time_offset
             if condition():
                 await asyncio.sleep(self.interval)
             self.started = await self.check_alive()
@@ -106,16 +126,21 @@ class BGProcess(KeepAlive):
         os.chdir(old_path)
 
     async def stop(self):
+        await asyncio.sleep(10) # Allow some time for the process to finish if it just crashed
         if self.process and self.process.returncode is None:
             log(f"Terminating background process with PID {self.process.pid}")
             self.process.terminate()
             try:
                 await asyncio.wait_for(self.process.wait(), timeout=5)
-            except asyncio.TimeoutError | asyncio.CancelledError:
+            except (asyncio.TimeoutError, asyncio.CancelledError):
                 log(loglevel.error, "Force killing process")
                 self.process.kill()
                 await self.process.wait()
-
+                log(f"Background process with PID {self.process.pid} terminated.")
+        if self.on_disconnect:
+            log("Calling on_disconnect callback.")
+            await self.on_disconnect()
+        self.process = None
     async def read_output(self, label):
         if not self.process or self.process.returncode is not None:
             raise RuntimeError("Process is not running or has already exited.")

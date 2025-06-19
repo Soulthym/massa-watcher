@@ -1,17 +1,20 @@
-from datetime import datetime
 from telethon import TelegramClient
 from telethon import Button
 from telethon import events
 
-from textwrap import dedent
 from inspect import Signature
 from inspect import signature
-from pathlib import Path
+from datetime import datetime, timedelta
+from textwrap import dedent
 from typing import Callable
 from typing import Any
+from pathlib import Path
+
 import sys
 import itertools
 import os
+
+time_offset = timedelta(minutes=5)
 
 dot = Path(__file__).parent
 data_dir = dot / "data"

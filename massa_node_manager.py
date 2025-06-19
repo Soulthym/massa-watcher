@@ -125,21 +125,25 @@ async def install_massa_node():
     await configure_massa_node()
 
 async def massa_api(method: str, *params: str):
-    async with aiohttp.ClientSession() as session:
-        url = "http://localhost:33035"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": [*params]
-        }
-        async with session.post(url, json=payload, headers=headers) as response:
-            if response.status != 200:
-                raise ValueError(f"Failed to get addresses info: {response.status}")
-            data = await response.json()
-            result = data.get("result", None)
-            return result
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "http://localhost:33035"
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": method,
+                "params": [*params]
+            }
+            async with session.post(url, json=payload, headers=headers) as response:
+                if response.status != 200:
+                    raise ValueError(f"Failed to get addresses info: {response.status}")
+                data = await response.json()
+                result = data.get("result", None)
+                return result
+    except Exception as e:
+        log(f"Error in massa_api call: {e}")
+        return None
 
 async def check_massa_alive() -> bool:
     """Check if the Massa node is alive by querying its API."""
@@ -156,7 +160,7 @@ async def check_massa_alive() -> bool:
         return False
 
 @contextlib.asynccontextmanager
-async def run_massa_node():
+async def run_massa_node(*background_tasks: Callable[[], Coroutine], on_disconnect: Callable[[], Coroutine] | None = None):
     await install_massa_node()
     massa_node_path = data_dir / "massa" / "massa-node" / "massa-node"
     if not massa_node_path.exists():
@@ -167,7 +171,9 @@ async def run_massa_node():
                          stdout=asyncio.subprocess.PIPE,
                          stderr=asyncio.subprocess.PIPE,
                          check_alive=check_massa_alive,
-                         interval=60).keep_alive():
+                         interval=10, background_tasks=background_tasks,
+                         on_disconnect=on_disconnect,
+                         ).keep_alive():
         log("Massa node is running. Press Ctrl+C to stop.")
         # Keep the main task running to allow background process to run
         yield

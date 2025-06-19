@@ -41,8 +41,8 @@ def log(*a, level=loglevel.info, **kw):
     prefix = datetime.now().strftime(f"{level}[%Y-%m-%d %H:%M:%S]")
     default_f = kw.pop("file", sys.stderr)  # Remove file from kwargs, we handle it ourselves
     with open(log_file, "a", encoding="utf-8") as f:
-        print(prefix, *a, **kw, file=f)
-    print(prefix, *a, **kw, file=default_f)
+        print(prefix, *a, **kw, file=f, flush=True)
+    print(prefix, *a, **kw, file=default_f, flush=True)
 def get_name(user, prefix=""):
     name_parts = []
     if getattr(user, "first_name", None):

@@ -166,7 +166,6 @@ async def get_addresses_info(addresses: Iterable[str]):
                 last_api_call = datetime.now()
                 return result
     except Exception as e:
-        print_
         if api_started:
             log(loglevel.error, f"Error fetching addresses info: {e}\n{format_exc()}")
         else:

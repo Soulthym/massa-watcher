@@ -140,70 +140,6 @@ async def massa_api(method: str, *params: str):
             result = data.get("result", None)
             return result
 
-@contextlib.asynccontextmanager
-async def run_bg_shell(cmd, then=None):
-    proc = BGProcess(cmd)
-    await proc.start()
-    yield
-    await proc.stop()
-    if then:
-        if asyncio.iscoroutinefunction(then):
-            await then(proc)
-        else:
-            then(proc)
-
-type AsyncFunc[T] = Callable[..., Coroutine[Any, Any, T]]
-type AsyncWith = Callable[..., AsyncContextManager]
-
-class RestartServiceError(Exception):
-    ...
-
-class KeepAlive:
-    def __init__(self, async_with: AsyncWith, check_alive: AsyncFunc[bool], interval: int = 60):
-        self.async_with = async_with
-        self.check_alive = check_alive
-        self.interval = interval
-        self.loop = asyncio.get_event_loop()
-        self.keep_alive_task = None
-        self.running = False
-
-    @contextlib.asynccontextmanager
-    async def run_bg(self):
-        """Run the background process and manage its lifecycle."""
-        try:
-            async with self.async_with() as proc:
-                self.keep_alive_task = self.loop.create_task(self.keep_alive())
-                yield proc
-        except Exception as e:
-            self.running = False
-            log(f"Error in run_bg: {e}")
-            if self.keep_alive_task is not None:
-                self.keep_alive_task.cancel()
-            raise
-
-    async def keep_alive(self):
-        while True:
-            try:
-                async with self.async_with():
-                    if await self.check_alive():
-                        self.running = True
-                        log("Service is alive.")
-                        await asyncio.sleep(self.interval)
-                    else:
-                        raise RestartServiceError("Service is not alive, restarting...")
-            except KeyboardInterrupt :
-                log("Service stopped by user")
-                break
-            except asyncio.CancelledError | SystemExit:
-                log("Service stopped by system")
-                break
-            except RestartServiceError as e:
-                log(e)
-                await asyncio.sleep(5)
-            except Exception as e:
-                log(f"Restarting service due to error: {e}")
-                await asyncio.sleep(5)
-
 async def check_massa_alive() -> bool:
     """Check if the Massa node is alive by querying its API."""
     try:
@@ -225,9 +161,6 @@ async def run_massa_node():
     if not massa_node_path.exists():
         raise ValueError(f"Massa node executable not found at {massa_node_path}")
     log(f"Running Massa node from {massa_node_path}")
-    # async with KeepAlive(async_with=run_bg_shell([str(massa_node_path), "-a", "-p", "password"]),
-    #                      check_alive=check_massa_alive,
-    #                      interval=60).run_bg():
     async with BGProcess([str(massa_node_path), "-a", "-p", "password"],
                          stdin=asyncio.subprocess.DEVNULL,
                          stdout=asyncio.subprocess.PIPE,

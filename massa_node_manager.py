@@ -165,7 +165,8 @@ async def run_massa_node():
                          stdin=asyncio.subprocess.DEVNULL,
                          stdout=asyncio.subprocess.PIPE,
                          stderr=asyncio.subprocess.PIPE,
-                         check_alive=check_massa_alive).keep_alive():
+                         check_alive=check_massa_alive,
+                         interval=60).keep_alive():
         log("Massa node is running. Press Ctrl+C to stop.")
         # Keep the main task running to allow background process to run
         yield

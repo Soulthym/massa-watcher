@@ -167,10 +167,8 @@ async def run_massa_node(*background_tasks: Callable[[], Coroutine], on_disconne
         raise ValueError(f"Massa node executable not found at {massa_node_path}")
     log(f"Running Massa node from {massa_node_path}")
     async with BGProcess([str(massa_node_path), "-a", "-p", "password"],
-                         stdin=asyncio.subprocess.DEVNULL,
-                         stdout=asyncio.subprocess.PIPE,
-                         stderr=asyncio.subprocess.PIPE,
                          check_alive=check_massa_alive,
+                         debug="Massa Node",
                          interval=60, background_tasks=background_tasks,
                          on_disconnect=on_disconnect,
                          ).keep_alive():

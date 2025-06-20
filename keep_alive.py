@@ -1,11 +1,12 @@
-from datetime import datetime
-from typing import Callable, Coroutine
 from env import time_offset
 from env import loglevel
 from env import log
 
 from contextlib import asynccontextmanager
 from traceback import format_exc
+from datetime import datetime
+from typing import Coroutine
+from typing import Callable
 from pathlib import Path
 
 import asyncio
@@ -23,6 +24,11 @@ class BGTask(abc.ABC):
         """Stop the background task."""
         pass
 
+    @abc.abstractmethod
+    async def read_output(self, label: str, stream_name: str):
+        """Read output from the background task."""
+        pass
+
 async def atry(f, *args, **kwargs):
     try:
         return await f(*args, **kwargs)
@@ -33,7 +39,8 @@ async def atry(f, *args, **kwargs):
         log(f"Error in {f.__name__}: {e}\n{format_exc()}")
 
 class KeepAlive(BGTask):
-    def __init__(self, check_alive, interval=10, background_tasks=(), on_disconnect=None):
+    def __init__(self, check_alive, debug="", interval=10, background_tasks=(), on_disconnect=None):
+        self.debug = debug
         self.interval = interval
         self.check_alive = check_alive
         self.last_alive = datetime.now() - time_offset
@@ -90,30 +97,22 @@ class KeepAlive(BGTask):
                 await task()
             await asyncio.sleep(self.interval)
 
-    async def keep_alive_inner(self, running=False):
-        print(f"{running=}")
-        condition = lambda: not self.started if running else lambda: self.started
-        while condition():
-            print(f"Keep alive: {self.started}")
-            if running:
-                self.last_alive = datetime.now() - time_offset
-            if condition():
-                await asyncio.sleep(self.interval)
-            self.started = await self.check_alive()
-
 class BGProcess(KeepAlive):
-    def __init__(self, cmd, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL, **kwargs):
+    def __init__(self, cmd, **kwargs):
         super().__init__(**kwargs)
         log(f"Initializing background process with command: {cmd}")
         self.path = Path(cmd[0]).parent
         log(f"Process path set to: {self.path}")
         self.cmd = cmd
         self.process = None
-        self.stdin = stdin
-        self.stdout = stdout
-        self.stderr = stderr
+        self.reader_tasks = []
 
     async def start(self):
+        self.stdin = asyncio.subprocess.DEVNULL
+        if self.debug:
+            self.stdout, self.stderr = (asyncio.subprocess.PIPE,) * 2
+        else:
+            self.stdout, self.stderr = (asyncio.subprocess.DEVNULL,) * 2
         old_path = os.getcwd()
         os.chdir(self.path)
         self.process = await asyncio.create_subprocess_exec(
@@ -122,6 +121,11 @@ class BGProcess(KeepAlive):
             stdout=self.stdout,
             stderr=self.stderr,
         )
+        if self.debug:
+            self.reader_tasks = [
+                    asyncio.create_task(self.read_output(self.debug, "stdout")),
+                    asyncio.create_task(self.read_output(self.debug, "stderr"))
+            ]
         log(f"Started background process with PID {self.process.pid}")
         os.chdir(old_path)
 
@@ -137,27 +141,40 @@ class BGProcess(KeepAlive):
                 self.process.kill()
                 await self.process.wait()
                 log(f"Background process with PID {self.process.pid} terminated.")
+        if self.debug:
+            for task in self.reader_tasks:
+                log(f"Cancelling reader task {task.get_name()}")
+                task.cancel(f"Stopping reader")
+            self.reader_tasks = []
         if self.on_disconnect:
             log("Calling on_disconnect callback.")
             await self.on_disconnect()
         self.process = None
-    async def read_output(self, label):
+        self.stdin = None
+        self.stdout = None
+        self.stderr = None
+
+    async def read_output(self, label, stream_name: str):
+        print("READING OUTPUT", label, stream_name)
         if not self.process or self.process.returncode is not None:
             raise RuntimeError("Process is not running or has already exited.")
-        stream = self.process.stdout
-        if not stream:
-            raise RuntimeError("Process has no stdout stream.")
-        try:
-            while True:
+
+        stream = getattr(self.process, stream_name, None)
+        while True:
+            try:
+                if not stream:
+                    raise asyncio.CancelledError(f"{stream_name} stream was closed.")
                 line = await stream.readline()
                 if line:
                     log(f"[{label}] {line.decode().rstrip()}")
                 else:
-                    await asyncio.sleep(0.1)  # Avoid busy waiting
-        except asyncio.CancelledError:
-            log(f"[{label}] Reading output cancelled.")
-        except KeyboardInterrupt:
-            log(f"[{label}] Reading output interrupted by user.")
-        except Exception as e:
-            log(f"[{label}] Exception while reading output: {e}\n{format_exc()}")
-            log(f"[{label}] Stream closed.")
+                    raise asyncio.CancelledError("Stream closed.")
+            except asyncio.CancelledError as e:
+                log(f"[{label}] Reading output cancelled.\n{e}")
+                break
+            except KeyboardInterrupt:
+                log(f"[{label}] Reading output interrupted by user.")
+                break
+            except Exception as e:
+                log(f"[{label}] Exception while reading output: {e}\n{format_exc()}")
+                log(f"[{label}] Stream closed.")

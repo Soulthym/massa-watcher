@@ -139,11 +139,11 @@ async def status(event):
     return await event.reply("\n".join(msg) if msg else "No address found?.", parse_mode="html")
 
 async def get_addresses_info(*addresses: str):
+    global api_started
     if len(addresses) < 10:
         log("Fetching addresses info for:", addresses)
     else:
         log(f"Fetching info for {len(addresses)} addresses, this may take a while...")
-    global api_started
     result = await massa_api("get_addresses", list(addresses))
     if not result:
         log(loglevel.error, "No addresses info returned from API.")

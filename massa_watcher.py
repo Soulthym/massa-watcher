@@ -210,8 +210,6 @@ def message_notification(info) -> (str | None):
     return "\n  ".join(message)
 
 async def notify_missed_blocks():
-    global api_started
-    api_started = True  # Ensure API is marked as started
     cutoff = int(datetime.now().timestamp() - time_offset.total_seconds())
     filtered = {k: v for k, v in watching.items() if v.timestamp < cutoff}
     for addresses in batched(filtered, 1000):

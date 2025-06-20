@@ -2,9 +2,10 @@ from telethon import TelegramClient
 from telethon import Button
 from telethon import events
 
+from datetime import timedelta
+from datetime import datetime
 from inspect import Signature
 from inspect import signature
-from datetime import datetime, timedelta
 from textwrap import dedent
 from typing import Callable
 from typing import Any

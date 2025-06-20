@@ -119,7 +119,7 @@ async def install_massa_node():
         await unpack(targz, data_dir)
     await configure_massa_node()
 
-async def massa_api(method: str, *params: str):
+async def massa_api(method: str, *params):
     try:
         async with aiohttp.ClientSession() as session:
             url = "http://localhost:33035"
@@ -142,17 +142,22 @@ async def massa_api(method: str, *params: str):
 
 async def check_massa_alive() -> bool:
     """Check if the Massa node is alive by querying its API."""
-    try:
-        result = await massa_api("get_status")
-        if not result:
-            log("Massa node is not running or returned no status.")
+    for _ in range(3):
+        try:
+            result = await massa_api("get_status")
+            if not result:
+                log("Massa node is not running or returned no status.")
+                return False
+            if "connected_nodes" in result:
+                return len(result["connected_nodes"]) > 0
             return False
-        if "connected_nodes" in result:
-            return len(result["connected_nodes"]) > 0
-        return False
-    except Exception as e:
-        log(f"Error checking Massa node status: {e}\n{format_exc()}")
-        return False
+        except asyncio.TimeoutError:
+            log("Massa node API request timed out.")
+            await asyncio.sleep(5)  # Wait before retrying
+        except Exception as e:
+            log(f"Error checking Massa node status: {e}\n{format_exc()}")
+            return False
+    return False
 
 @contextlib.asynccontextmanager
 async def run_massa_node(*background_tasks: Callable[[], Coroutine], on_disconnect: Callable[[], Coroutine] | None = None):

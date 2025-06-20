@@ -1,4 +1,5 @@
 from massa_node_manager import run_massa_node
+from massa_node_manager import massa_api
 from env import build_default_commands
 from env import TG_USERNAME
 from env import TG_ADMIN
@@ -14,7 +15,6 @@ from datetime import datetime
 from itertools import batched
 
 import asyncio
-import aiohttp
 import time
 import csv
 
@@ -144,33 +144,16 @@ async def get_addresses_info(*addresses: str):
     else:
         log(f"Fetching info for {len(addresses)} addresses, this may take a while...")
     global api_started
-    try:
-        async with aiohttp.ClientSession() as session:
-            url = "http://localhost:33035"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "get_addresses",
-                "params": [list(addresses)]
-            }
-            async with session.post(url, json=payload, headers=headers) as response:
-                if response.status != 200:
-                    raise ValueError(f"Failed to get addresses info: {response.status}")
-                data = await response.json()
-                result = data.get("result", [])
-                print(f"API started: {api_started}")
-                if not api_started:
-                    log("API started successfully.")
-                    await bot.send_message(TG_ADMIN, "API started successfully.")
-                api_started = True
-                return result
-    except Exception as e:
-        if api_started:
-            log(loglevel.error, f"Error fetching addresses info: {e}")
-        else:
-            log(loglevel.warn, "API not started yet, retrying in 60 seconds...")
+    result = await massa_api("get_addresses", list(addresses))
+    if not result:
+        log(loglevel.error, "No addresses info returned from API.")
         return None
+    print(f"API started: {api_started}")
+    if not api_started:
+        log("API started successfully.")
+        await bot.send_message(TG_ADMIN, "API started successfully.")
+        api_started = True
+    return result
 
 def should_notify(info) -> bool:
     """Check if the address has missed blocks."""

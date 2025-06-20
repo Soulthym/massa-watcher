@@ -7,6 +7,7 @@ from traceback import format_exc
 from pathlib import Path
 from collections.abc import Callable
 from collections.abc import Coroutine
+from pprint import pp
 import contextlib
 import platform
 import hashlib
@@ -48,7 +49,9 @@ async def massa_get_latest_release():
     }
     async with aiohttp.ClientSession() as session:
         data = await session.get(url, headers=headers)
-        releases = {d['name']: [a["name"] for a in d["assets"]] for d in await data.json() if d['name'].startswith('MAIN.')}
+        j = await data.json()
+        pp(j)
+        releases = {d['name']: [a["name"] for a in d["assets"]] for d in j if d['name'].startswith('MAIN.')}
     for version, files in sorted(releases.items(), key=lambda x: tuple(map(int, x[0].split('.')[1:])), reverse=True):
         for file in files:
             if file.endswith(platform_name + ".tar.gz"):

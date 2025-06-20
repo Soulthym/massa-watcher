@@ -1,16 +1,12 @@
 from env import data_dir
-from env import loglevel
 from env import log
 from env import dot
 from keep_alive import BGProcess
 
 from traceback import format_exc
 from pathlib import Path
-from pprint import pp
 from collections.abc import Callable
 from collections.abc import Coroutine
-from typing import Any, overload
-from typing import AsyncContextManager
 import contextlib
 import platform
 import hashlib
@@ -18,7 +14,6 @@ import tarfile
 import asyncio
 import aiohttp
 import shutil
-import os
 
 def kill_node():
     """Kill the Massa node process if it is running using pkill."""

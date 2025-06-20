@@ -169,7 +169,7 @@ async def get_addresses_info(*addresses: str):
         if api_started:
             log(loglevel.error, f"Error fetching addresses info: {e}")
         else:
-            log(loglevel.warn, "API not started yet, retrying in 5 seconds...")
+            log(loglevel.warn, "API not started yet, retrying in 60 seconds...")
         return None
 
 def should_notify(info) -> bool:
@@ -181,7 +181,7 @@ def should_notify(info) -> bool:
     if watched.timestamp > int(datetime.now().timestamp() - time_offset.total_seconds()):
         # If the address was recently checked, do not notify
         return False
-    for cycle in info.get("cycle_infos", []):
+    for cycle in sorted(info.get("cycle_infos", []), key=lambda x: x["cycle"])[-2:]:  # Check the last two cycles
         if cycle.get("nok_count", 0) > 0:
             return True
     return False

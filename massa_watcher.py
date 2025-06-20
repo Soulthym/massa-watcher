@@ -145,7 +145,7 @@ async def get_addresses_info(*addresses: str):
         log(f"Fetching info for {len(addresses)} addresses, this may take a while...")
     global api_started
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
             url = "http://localhost:33035"
             headers = {"Content-Type": "application/json"}
             payload = {
@@ -154,7 +154,7 @@ async def get_addresses_info(*addresses: str):
                 "method": "get_addresses",
                 "params": [list(addresses)]
             }
-            async with session.post(url, json=payload, headers=headers) as response:
+            async with session.post(url, json=payload, headers=headers, timeout=5) as response:
                 if response.status != 200:
                     raise ValueError(f"Failed to get addresses info: {response.status}")
                 data = await response.json()

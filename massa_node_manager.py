@@ -121,7 +121,7 @@ async def install_massa_node():
 
 async def massa_api(method: str, *params: str):
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
             url = "http://localhost:33035"
             headers = {"Content-Type": "application/json"}
             payload = {
@@ -130,7 +130,7 @@ async def massa_api(method: str, *params: str):
                 "method": method,
                 "params": [*params]
             }
-            async with session.post(url, json=payload, headers=headers) as response:
+            async with session.post(url, json=payload, headers=headers, timeout=5) as response:
                 if response.status != 200:
                     raise ValueError(f"Failed to get addresses info: {response.status}")
                 data = await response.json()
@@ -166,7 +166,7 @@ async def run_massa_node(*background_tasks: Callable[[], Coroutine], on_disconne
                          stdout=asyncio.subprocess.PIPE,
                          stderr=asyncio.subprocess.PIPE,
                          check_alive=check_massa_alive,
-                         interval=10, background_tasks=background_tasks,
+                         interval=60, background_tasks=background_tasks,
                          on_disconnect=on_disconnect,
                          ).keep_alive():
         log("Massa node is running. Press Ctrl+C to stop.")

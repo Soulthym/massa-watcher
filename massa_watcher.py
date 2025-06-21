@@ -1,3 +1,5 @@
+from telethon import Button
+
 from massa_node_manager import run_massa_node
 from massa_node_manager import massa_api
 from env import build_default_commands
@@ -9,8 +11,6 @@ from env import data_dir
 from env import command
 from env import bot
 from env import log
-
-from telethon import Button
 
 from traceback import format_exc
 from datetime import timedelta

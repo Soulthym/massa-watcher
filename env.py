@@ -12,8 +12,8 @@ from typing import Literal
 from pathlib import Path
 from typing import Any
 
-import sys
 import itertools
+import sys
 import os
 
 time_offset = timedelta(minutes=5)
@@ -151,7 +151,9 @@ def command(f = None, /, cmd=None, event_new=True, event_btn=False, **arg_specs)
 
 def build_command_usage(cmd: str, info: CmdInfo) -> str:
     sig, _, f, _ = info
-    args = " ".join(name for name in sig.parameters if name not in ("event", "cmd"))
+    args = " ".join(name for name, param in sig.parameters.items() if name not in ("event", "cmd") if param.default is param.empty)
+    opt_args = " ".join(f"[{name}]" for name, param in sig.parameters.items() if name not in ("event", "cmd") if param.default is not param.empty)
+    args = " ".join(a for a in (args, opt_args) if a)
     if not args:
         return f"/{cmd}"
     return f"/{cmd} {args}"

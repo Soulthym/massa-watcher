@@ -164,12 +164,13 @@ class BGProcess(KeepAlive):
             try:
                 if not stream:
                     raise asyncio.CancelledError(f"{stream_name} stream was closed.")
-                line = await stream.readline()
-                await asyncio.sleep(.01)  # Yield control to the event loop
+                line = await asyncio.wait_for(stream.readline(), timeout=.1)
                 if line:
                     log(f"[{label}] {line.decode().rstrip()}")
                 else:
                     raise asyncio.CancelledError("Stream closed.")
+            except asyncio.TimeoutError:
+                continue
             except asyncio.CancelledError as e:
                 log(f"[{label}] Reading output cancelled.\n{e}")
                 break

@@ -8,8 +8,9 @@ from inspect import Signature
 from inspect import signature
 from textwrap import dedent
 from typing import Callable
-from typing import Any
+from typing import Literal
 from pathlib import Path
+from typing import Any
 
 import sys
 import itertools
@@ -62,7 +63,7 @@ def get_name(user, prefix=""):
         return ""
     return prefix + " ".join(name_parts)
 
-def wrap_spaces(**kw):
+def wrap_spaces(**kw: str) -> str:
     result = []
     endings = []
     for i, (key, value) in enumerate(kw.items()):
@@ -74,25 +75,37 @@ def wrap_spaces(**kw):
     endings.reverse()
     return "".join(result) + "".join(endings)
 
-def make_pattern(name, **kw):
-    pattern = wrap_spaces(**kw)
-    return r"(?im)^/(?P<cmd>{name})(?:@{username})?{pattern}".format(
-        name=name, username=TG_USERNAME, pattern=pattern)
 
-commands = {}
-def command(f = None, /, cmd=None, **arg_specs):
+def make_pattern(name: str, kind: Literal["new", "btn"], **kw: str) -> str:
+    pattern = wrap_spaces(**kw)
+    if kind == "new":
+        return r"(?im)^/(?P<cmd>{name})(?:@{username})?{pattern}".format(
+            name=name, username=TG_USERNAME, pattern=pattern)
+    elif kind == "btn":
+        return r"(?im)^(?P<cmd>{name}){pattern}".format(
+        name=name, pattern=pattern)
+    else:
+        raise ValueError("Either event_new or event_btn must be True.")
+
+type Func = Callable[..., Any]
+type CmdInfo = tuple[Signature, dict[str, str], Func, list[Func]]
+commands: dict[str, CmdInfo] = {}
+_CMDS_HANDLER_IDX = 3
+
+def register_cmd(cmd, sig, arg_specs, f, handler):
+    if cmd not in commands:
+        commands[cmd] = (sig, arg_specs, f, [handler])
+    else:
+        commands[cmd][_CMDS_HANDLER_IDX].append(handler)
+
+def command(f = None, /, cmd=None, event_new=True, event_btn=False, **arg_specs):
     if f is None:
-        return lambda f: command(f, cmd=cmd, **arg_specs)
+        return lambda f: command(f, cmd=cmd, event_new=event_new, event_btn=event_btn, **arg_specs)
     if not cmd:
         cmd = f.__name__
     sig = signature(f)
     arg_specs = {key: arg_specs[key] if key in arg_specs else r"\S+" for key in sig.parameters if key not in ("event", "cmd")}
-    pattern = make_pattern(cmd, **arg_specs)
-    print(f"Command {cmd!r} registered with pattern r'{pattern}'")
-    @bot.on(events.NewMessage(pattern=pattern))
-    async def handler(event):
-        if not event.is_private:
-            return await event.reply("I can only respond to private messages.", buttons=[Button.url("Send me a message", f"https://t.me/{TG_USERNAME}?start=start")])
+    async def bind_args(event, handler):
         f_kw = {k: v for k, v in event.pattern_match.groupdict().items() if k in arg_specs and v is not None}
         if "cmd" not in sig.parameters:
             f_kw.pop("cmd", None)
@@ -112,15 +125,29 @@ def command(f = None, /, cmd=None, **arg_specs):
                 return await event.reply(f"Missing argument: {key}\n\n{doc(cmd, (sig, arg_specs, f, handler))}")
             if param.annotation is not param.empty:
                 f_kw[key] = param.annotation(f_kw[key])
-        bound_args = sig.bind(event, **f_kw)
-        return await f(*bound_args.args, **bound_args.kwargs)
+        return sig.bind(event, **f_kw)
     if cmd in commands:
         raise ValueError(f"Command {cmd!r} is already registered as {commands[cmd]!r}")
-    commands[cmd] = (sig, arg_specs, f, handler)
-    return handler
-
-type Func = Callable[..., Any]
-type CmdInfo = tuple[Signature, dict[str, str], Func, Func]
+    if event_new:
+        pattern = make_pattern(cmd, kind="new", **arg_specs)
+        print(f"Command.NewMessage {cmd!r} registered with pattern r'{pattern}'")
+        @bot.on(events.NewMessage(pattern=pattern))
+        async def new_handler(event):
+            if not event.is_private:
+                return await event.reply("I can only respond to private messages.", buttons=[Button.url("Send me a message", f"https://t.me/{TG_USERNAME}?start=start")])
+            bound = await bind_args(event, new_handler)
+            return await f(*bound.args, **bound.kwargs)
+        register_cmd(cmd, sig, arg_specs, f, new_handler)
+    if event_btn:
+        pattern = make_pattern(cmd, kind="btn", **arg_specs)
+        print(f"Command.CallbackQuery {cmd!r} registered with pattern r'{pattern}'")
+        @bot.on(events.CallbackQuery(pattern=pattern))
+        async def btn_handler(event):
+            event.reply = event.edit
+            bound = await bind_args(event, btn_handler)
+            return await f(*bound.args, **bound.kwargs)
+        register_cmd(cmd, sig, arg_specs, f, btn_handler)
+    return f
 
 def build_command_usage(cmd: str, info: CmdInfo) -> str:
     sig, _, f, _ = info
@@ -167,3 +194,8 @@ def build_default_commands():
             f"Source: https://github.com/Soulthym/massa-watcher",
         ])
         await event.reply("\n".join(msg), parse_mode="html", link_preview=False)
+
+noop_btn = Button.inline(" ", data="noop")
+@command(event_new=False, event_btn=True)
+async def noop(event):
+    raise events.StopPropagation  # This command does nothing, just to prevent errors with empty buttons

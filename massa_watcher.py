@@ -3,11 +3,14 @@ from massa_node_manager import massa_api
 from env import build_default_commands
 from env import TG_USERNAME
 from env import TG_ADMIN
+from env import noop_btn
 from env import loglevel
 from env import data_dir
 from env import command
 from env import bot
 from env import log
+
+from telethon import Button
 
 from traceback import format_exc
 from datetime import timedelta
@@ -118,25 +121,40 @@ async def unwatch(event, address):
     watching[address].users.remove(user)
     await event.reply(f"Stopped watching address: {address}")
 
-@command
-async def status(event):
+@command(index=r"\d+", event_btn=True)
+async def status(event, index: int = 0):
     """\
     Show the status of your watched addresses.
-    Usage: /status
+    Usage: /status [index]
     """
     user = event.sender_id
     addresses = rev_watching.get(user, [])
     if not addresses:
         return await event.reply("You are not watching any addresses.\nUse /watch <address> to start watching a staking address.")
-    msg = []
-    info = await get_addresses_info(*addresses)
+    index = min(index, len(addresses) - 1)
+    info = await get_addresses_info(addresses[index])
     if not api_started:
         return await event.reply("API is still starting. Please try again in a few minutes.")
     if not info:
         return await event.reply("No information available for your watched addresses.")
-    for i in info:
-        msg.append(message_notification(i) or "No information available for this address.")
-    return await event.reply("\n".join(msg) if msg else "No address found?.", parse_mode="html")
+    assert len(info) == 1, f"Expected exactly one address info, got {len(info)}"
+    msg = message_notification(info[0])
+    buttons = []
+    if len(addresses) > 1:
+        prev_idx = max(0, index - 1)
+        next_idx = min(index + 1, len(addresses) - 1)
+        max_idx = len(addresses) - 1
+        buttons.append([
+            Button.inline(f"⏮️ 1", data=f"status 0") if index > 0 else noop_btn,
+            Button.inline(f"◀️ {prev_idx + 1}", data=f"status {prev_idx}") if index > 0 else noop_btn,
+            Button.inline(f"{index + 1}/{max_idx + 1}", data=f"noop"),
+            Button.inline(f"{next_idx + 1} ▶️", data=f"status {next_idx}") if index < max_idx else noop_btn,
+            Button.inline(f"{max_idx + 1} ⏭️", data=f"status {max_idx}") if index < max_idx else noop_btn,
+        ])
+    return await event.reply(
+        msg if msg else "No address found?.",
+        buttons=buttons or None,
+        parse_mode="html")
 
 async def get_addresses_info(*addresses: str):
     global api_started

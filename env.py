@@ -6,6 +6,8 @@ from datetime import timedelta
 from datetime import datetime
 from inspect import Signature
 from inspect import signature
+from functools import partial
+from functools import wraps
 from textwrap import dedent
 from typing import Callable
 from typing import Literal
@@ -33,6 +35,18 @@ TG_USERNAME = os.environ["TG_USERNAME"].lstrip("@")
 TG_ADMIN = os.environ["TG_ADMIN"].lstrip("@")
 
 bot = TelegramClient(session_dir/TG_USERNAME, TG_API_ID, TG_API_HASH).start(bot_token=TG_BOT_TOKEN)
+
+def cache(func=None, *,  ignore_args=None):
+    if func is None:
+        return partial(cache, ignore_args=ignore_args)
+    _cache = {}
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        key = (args, tuple(sorted(((k, v) for k, v in kwargs.items() if k not in (ignore_args or [])))))
+        if key not in _cache:
+            _cache[key] = func(*args, **kwargs)
+        return _cache[key]
+    return wrapper
 
 class Loglevel:
     debug = "DEBUG"
@@ -88,15 +102,17 @@ def make_pattern(name: str, kind: Literal["new", "btn"], **kw: str) -> str:
         raise ValueError("Either event_new or event_btn must be True.")
 
 type Func = Callable[..., Any]
-type CmdInfo = tuple[Signature, dict[str, str], Func, list[Func]]
+type CmdInfo = tuple[Signature, dict[str, str], Func, list[Func], bool]
 commands: dict[str, CmdInfo] = {}
 _CMDS_HANDLER_IDX = 3
+_CMDS_HAS_EVENT_NEW_IDX = -1
 
-def register_cmd(cmd, sig, arg_specs, f, handler):
+def register_cmd(cmd, sig, arg_specs, f, handler, event_new):
     if cmd not in commands:
-        commands[cmd] = (sig, arg_specs, f, [handler])
+        commands[cmd] = (sig, arg_specs, f, [handler], event_new)
     else:
         commands[cmd][_CMDS_HANDLER_IDX].append(handler)
+    commands[cmd] = (*commands[cmd][:_CMDS_HAS_EVENT_NEW_IDX], commands[cmd][_CMDS_HAS_EVENT_NEW_IDX] | event_new,)
 
 def command(f = None, /, cmd=None, event_new=True, event_btn=False, **arg_specs):
     if f is None:
@@ -122,7 +138,8 @@ def command(f = None, /, cmd=None, event_new=True, event_btn=False, **arg_specs)
                 if param.default is not param.empty:
                     f_kw[key] = param.default
                     continue
-                return await event.reply(f"Missing argument: {key}\n\n{doc(cmd, (sig, arg_specs, f, handler))}")
+                await event.reply(f"Missing argument: {key}\n\n{doc(cmd, (sig, arg_specs, f, handler, True))}", parse_mode="html", link_preview=False)
+                raise events.StopPropagation
             if param.annotation is not param.empty:
                 f_kw[key] = param.annotation(f_kw[key])
         return sig.bind(event, **f_kw)
@@ -130,27 +147,27 @@ def command(f = None, /, cmd=None, event_new=True, event_btn=False, **arg_specs)
         raise ValueError(f"Command {cmd!r} is already registered as {commands[cmd]!r}")
     if event_new:
         pattern = make_pattern(cmd, kind="new", **arg_specs)
-        print(f"Command.NewMessage {cmd!r} registered with pattern r'{pattern}'")
+        log(f"Command.NewMessage {cmd!r} registered with pattern r'{pattern}'")
         @bot.on(events.NewMessage(pattern=pattern))
         async def new_handler(event):
             if not event.is_private:
                 return await event.reply("I can only respond to private messages.", buttons=[Button.url("Send me a message", f"https://t.me/{TG_USERNAME}?start=start")])
             bound = await bind_args(event, new_handler)
             return await f(*bound.args, **bound.kwargs)
-        register_cmd(cmd, sig, arg_specs, f, new_handler)
+        register_cmd(cmd, sig, arg_specs, f, new_handler, event_new=True)
     if event_btn:
         pattern = make_pattern(cmd, kind="btn", **arg_specs)
-        print(f"Command.CallbackQuery {cmd!r} registered with pattern r'{pattern}'")
+        log(f"Command.CallbackQuery {cmd!r} registered with pattern r'{pattern}'")
         @bot.on(events.CallbackQuery(pattern=pattern))
         async def btn_handler(event):
             event.reply = event.edit
             bound = await bind_args(event, btn_handler)
             return await f(*bound.args, **bound.kwargs)
-        register_cmd(cmd, sig, arg_specs, f, btn_handler)
+        register_cmd(cmd, sig, arg_specs, f, btn_handler, event_new=False)
     return f
 
 def build_command_usage(cmd: str, info: CmdInfo) -> str:
-    sig, _, f, _ = info
+    sig, _, f, _, _ = info
     args = " ".join(name for name, param in sig.parameters.items() if name not in ("event", "cmd") if param.default is param.empty)
     opt_args = " ".join(f"[{name}]" for name, param in sig.parameters.items() if name not in ("event", "cmd") if param.default is not param.empty)
     args = " ".join(a for a in (args, opt_args) if a)
@@ -159,24 +176,25 @@ def build_command_usage(cmd: str, info: CmdInfo) -> str:
     return f"/{cmd} {args}"
 
 def doc(cmd: str, info: CmdInfo) -> str:
-    _, _, f, _ = info
+    _, _, f, _, _ = info
     docstr = dedent(f.__doc__ or "").strip()
     return build_command_usage(cmd, info) + (" - " + docstr if docstr else "")
 
 def doc_line(cmd: str, info: CmdInfo) -> str:
-    _, _, f, _ = info
+    _, _, f, _, _ = info
     docstr = dedent(f.__doc__ or "").strip().partition("\n")[0]
     return build_command_usage(cmd, info) + (" - " + docstr if docstr else "")
 
+@cache
 def build_command_list(cmd: str):
     default_commands = [
         "/start - " + ("Show this menu" if cmd == "start" else "Start menu"),
         "/help - " + ("Show this menu" if cmd == "help" else "Show available commands"),
     ]
-    return itertools.chain(
+    return list(itertools.chain(
         (d for d in default_commands),
-        (doc_line(cmd, info) for cmd, info in commands.items() if cmd != "start|help"),
-    )
+        (doc_line(cmd, info) for cmd, info in commands.items() if cmd != "start|help" and info[_CMDS_HAS_EVENT_NEW_IDX]),
+    ))
 
 def build_default_commands():
     @command(cmd="start|help")

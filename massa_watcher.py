@@ -24,18 +24,27 @@ import csv
 time_offset = timedelta(minutes=5)
 api_started = False
 
+class User:
+    def __init__(self, user_id, notify_ok = False, notify_nok = True):
+        self.id: int = user_id
+        self.notify_ok: bool = notify_ok
+        self.notify_nok: bool = notify_nok
+
+    def __str__(self):
+        return f"User(id={self.id}, notify_ok={self.notify_ok}, notify_nok={self.notify_nok})"
+
 class Watched:
-    def __init__(self, address: str, *users: int):
+    def __init__(self, address: str, *users: User):
         self.address = address
-        self.users: set[int] = set(users)
+        self.users: dict[int, User] = {user.id: user for user in users}
         self.timestamp: int = int(datetime.now().timestamp() - time_offset.total_seconds())
-    def __contains__(self, user: int) -> bool:
-        return user in self.users
-    async def notify(self, info):
-        for user in self.users:
-            message = message_notification(info)
-            if message is not None:
-                await bot.send_message(user, message, parse_mode="html")
+    def __contains__(self, uid: int) -> bool:
+        return uid in self.users
+    async def notify_nok(self, info):
+        for uid, user in self.users.items():
+            address_status = message_notification(info)
+            if address_status is not None:
+                await bot.send_message(uid, address_status, parse_mode="html")
         self.timestamp = int(datetime.now().timestamp())
 
 type Watching = dict[str, Watched]
@@ -54,24 +63,27 @@ def read_csv(file_path) -> tuple[Watching, RevWatching]:
             key = row["address"]
             if key not in res:
                 res[key] = Watched(key)
-            user = int(row["user"])
-            if user not in rev:
-                rev[user] = []
-            rev[user].append(key)
-            if user not in res[key]:
-                res[key].users.add(user)
+            uid = int(row["user"])
+            notify_ok: bool = row.get("notify_ok", "False").lower() == "true"
+            notify_nok: bool = row.get("notify_nok", "True").lower() == "true"
+            user = User(uid, notify_ok=notify_ok, notify_nok=notify_nok)
+            if uid not in rev:
+                rev[uid] = []
+            rev[uid].append(key)
+            if uid not in res[key]:
+                res[key].users[uid] = user
         return res, rev
 
 def write_csv(file_path, data: Watching):
     """Write a list of dictionaries to a CSV file."""
     log(f"Writing {len(data)} entries to {file_path}")
     with file_path.open("w+", newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=["address", "user"])
+        writer = csv.DictWriter(f, fieldnames=["address", "user", "notify_ok", "notify_nok"])
         writer.writeheader()
         for address, watched in data.items():
             log(f"Writing address: {address} with users: {watched.users}")
-            for user in watched.users:
-                writer.writerow({"address": address, "user": str(user)})
+            for uid, user in watched.users.items():
+                writer.writerow({"address": address, "user": str(uid), "notify_ok": str(user.notify_ok), "notify_nok": str(user.notify_nok)})
 
 watching_file = data_dir / "watching.csv"
 watching, rev_watching = read_csv(watching_file)
@@ -86,7 +98,7 @@ async def watch(event, address: str):
     - address: Your Massa address.
       pattern: AU[1-9A-HJ-NP-Za-km-z]+
     """
-    user = event.sender_id
+    uid = event.sender_id
     info = await get_addresses_info(address)
     if not api_started:
         return await event.reply("API is still starting. Please try again in a few minutes.")
@@ -94,12 +106,12 @@ async def watch(event, address: str):
         return await event.reply(f"I could not find any information for this address. Please check if it is a valid staking address.\n\nIf you think this is an error, please contact @{TG_ADMIN}.")
     if address not in watching:
         watching[address] = Watched(address)
-    if user not in rev_watching:
-        rev_watching[user] = []
-    if user in watching[address]:
+    if uid not in rev_watching:
+        rev_watching[uid] = []
+    if uid in watching[address]:
         return await event.reply(f"You are already watching address: {address}")
-    watching[address].users.add(user)
-    rev_watching[user].append(address)
+    watching[address].users[uid] = User(uid)
+    rev_watching[uid].append(address)
     await event.reply(f"Started watching address: {address}")
 
 @command(address=address_pat)
@@ -111,14 +123,14 @@ async def unwatch(event, address):
     - address: Your Massa address.
       pattern: AU[1-9A-HJ-NP-Za-km-z]+
     """
-    user = event.sender_id
+    uid = event.sender_id
     if address not in watching:
         return await event.reply("You are not watching any addresses.")
-    if user not in watching[address]:
+    if uid not in watching[address]:
         return await event.reply(f"You are not watching address: {address}")
-    if user in rev_watching and address in rev_watching[user]:
-        rev_watching[user].remove(address)
-    watching[address].users.remove(user)
+    if uid in rev_watching and address in rev_watching[uid]:
+        rev_watching[uid].remove(address)
+    watching[address].users.pop(uid, None)
     await event.reply(f"Stopped watching address: {address}")
 
 @command(index=r"\d+", event_btn=True)
@@ -127,8 +139,8 @@ async def status(event, index: int = 0):
     Show the status of your watched addresses.
     Usage: /status [index]
     """
-    user = event.sender_id
-    addresses = rev_watching.get(user, [])
+    uid = event.sender_id
+    addresses = rev_watching.get(uid, [])
     if not addresses:
         return await event.reply("You are not watching any addresses.\nUse /watch <address> to start watching a staking address.")
     index = min(index, len(addresses) - 1)
@@ -173,7 +185,7 @@ async def get_addresses_info(*addresses: str):
         api_started = True
     return result
 
-def should_notify(info) -> bool:
+def should_notify_nok(info) -> bool:
     """Check if the address has missed blocks."""
     if not info:
         return False
@@ -219,10 +231,10 @@ async def notify_missed_blocks():
             log(loglevel.warn, "No addresses info returned.")
             continue
         for i in info:
-            if not should_notify(i):
+            if not should_notify_nok(i):
                 continue
             address = i["address"]
-            await watching[address].notify(i)
+            await watching[address].notify_nok(i)
         await asyncio.sleep(1)  # Rate limit to avoid overwhelming the node
 
 async def on_disconnect():
